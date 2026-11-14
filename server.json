@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.kolivritech/memoria-mcp",
-  "title": "Memoria — Open-Source Deterministic AI Memory & Code Intelligence MCP",
-  "description": "Zero-dependency Node.js MCP server with local BM25 + salience graph memory store and optional Memoria Cloud sync.",
+  "title": "Memoria — Deterministic AI Memory & Code Intelligence MCP",
+  "description": "Official Node.js MCP connector for Memoria Cloud (https://memoria.kolivri.com).",
   "version": "1.0.0",
   "websiteUrl": "https://memoria.kolivri.com",
   "repository": {
@@ -20,6 +20,13 @@
       },
       "environmentVariables": [
         {
+          "name": "MEMORIA_API_KEY",
+          "description": "Your Memoria Cloud API key from https://memoria.kolivri.com/register.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
           "name": "MEMORIA_NAMESPACE",
           "description": "Default workspace namespace (defaults to 'default').",
           "isRequired": false,
@@ -28,22 +35,8 @@
           "default": "default"
         },
         {
-          "name": "MEMORIA_STORAGE_PATH",
-          "description": "Local persistent graph store file path (defaults to ~/.memoria/local-memories.json).",
-          "isRequired": false,
-          "isSecret": false,
-          "format": "string"
-        },
-        {
-          "name": "MEMORIA_API_KEY",
-          "description": "Optional Memoria Cloud API key for syncing memories with https://memoria.kolivri.com.",
-          "isRequired": false,
-          "isSecret": true,
-          "format": "string"
-        },
-        {
           "name": "MEMORIA_API_URL",
-          "description": "Optional Memoria Cloud endpoint URL.",
+          "description": "Memoria Cloud endpoint URL.",
           "isRequired": false,
           "isSecret": false,
           "format": "string",

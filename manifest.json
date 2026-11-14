@@ -2,7 +2,7 @@
   "manifest_version": "0.1",
   "name": "@kolivri/memoria-mcp",
   "version": "1.0.0",
-  "description": "Open-source deterministic long-term memory, BM25 + salience graph store, and code intelligence MCP server.",
+  "description": "Official Node.js MCP connector for Memoria Cloud (https://memoria.kolivri.com).",
   "author": {
     "name": "Kolivri Ltd",
     "url": "https://memoria.kolivri.com"

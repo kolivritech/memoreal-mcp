@@ -3,11 +3,10 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import {
-  LocalMemoryStore,
   MCP_PROMPTS,
   MCP_RESOURCES,
   MCP_TOOLS,
-} from './memory-store.mjs';
+} from './schemas.mjs';
 
 export function createMemoriaMcpService(options = {}) {
   const apiUrl = (
@@ -15,16 +14,25 @@ export function createMemoriaMcpService(options = {}) {
     process.env.MEMORIA_API_URL ||
     'https://memoria.kolivri.com'
   ).replace(/\/+$/, '');
-  const apiKey = (options.apiKey ?? process.env.MEMORIA_API_KEY ?? '').trim();
+  const defaultApiKey = (options.apiKey ?? process.env.MEMORIA_API_KEY ?? '').trim();
+  const defaultNamespace = (options.namespace ?? process.env.MEMORIA_NAMESPACE ?? 'default').trim() || 'default';
   const fetchImpl = options.fetchImpl || globalThis.fetch;
-  const requestTimeoutMs = Number(options.requestTimeoutMs ?? process.env.MEMORIA_TIMEOUT_MS ?? 10_000);
-  const store = options.store || new LocalMemoryStore(options);
+  const requestTimeoutMs = Number(options.requestTimeoutMs ?? process.env.MEMORIA_TIMEOUT_MS ?? 15_000);
 
-  async function syncWithCloud(toolName, args) {
-    if (!apiKey || typeof fetchImpl !== 'function') {
-      return null;
+  function requireApiKey(overrideKey) {
+    const key = (overrideKey || defaultApiKey || '').trim();
+    if (!key) {
+      throw new Error(
+        'Missing Memoria API key: set MEMORIA_API_KEY in environment (get your key at https://memoria.kolivri.com/register).'
+      );
     }
+    return key;
+  }
+
+  async function forwardCloudRpc(method, params, overrideKey) {
+    const apiKey = requireApiKey(overrideKey);
     const endpoint = apiUrl.endsWith('/v1/mcp') ? apiUrl : `${apiUrl}/v1/mcp`;
+
     const response = await fetchImpl(endpoint, {
       method: 'POST',
       headers: {
@@ -34,24 +42,56 @@ export function createMemoriaMcpService(options = {}) {
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
-        id: `cloud_${Date.now()}`,
-        method: 'tools/call',
-        params: {
-          name: toolName,
-          arguments: args,
-        },
+        id: `mem_${Date.now()}`,
+        method,
+        params,
       }),
       signal: AbortSignal.timeout(requestTimeoutMs),
     });
 
-    if (!response.ok) {
-      throw new Error(`Memoria Cloud API error (${response.status})`);
+    const responseText = await response.text();
+    let payload = {};
+    if (responseText) {
+      try {
+        payload = JSON.parse(responseText);
+      } catch {
+        payload = { raw: responseText };
+      }
     }
-    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        `Memoria Cloud API error (${response.status}): ${payload?.error?.message || payload?.error || payload?.message || responseText || 'Request failed'}`
+      );
+    }
+
     if (payload?.error) {
       throw new Error(payload.error.message || 'Memoria Cloud RPC error');
     }
-    const textBlock = payload?.result?.content?.[0]?.text;
+
+    return payload?.result ?? payload;
+  }
+
+  async function callTool(name, args = {}) {
+    if (!MCP_TOOLS.some((t) => t.name === name)) {
+      throw new Error(`Unknown tool: "${name}"`);
+    }
+
+    const enrichedArgs = {
+      ...args,
+      ...(args.namespace === undefined && name !== 'health' ? { namespace: defaultNamespace } : {}),
+    };
+
+    const result = await forwardCloudRpc(
+      'tools/call',
+      {
+        name,
+        arguments: enrichedArgs,
+      },
+      args.apiKey
+    );
+
+    const textBlock = result?.content?.[0]?.text;
     if (textBlock) {
       try {
         return JSON.parse(textBlock);
@@ -59,115 +99,30 @@ export function createMemoriaMcpService(options = {}) {
         return { raw: textBlock };
       }
     }
-    return payload?.result ?? null;
+    return result;
   }
 
-  function executeLocalTool(name, args = {}) {
-    switch (name) {
-      case 'encode_memory':
-        return store.encodeMemory(args);
-      case 'batch_encode':
-        return store.batchEncode(args);
-      case 'recall_memories':
-        return store.recallMemories(args);
-      case 'build_context':
-        return store.buildContext(args);
-      case 'forget_memory':
-        return store.forgetMemory(args);
-      case 'delete_by_context':
-        return store.deleteByContext(args);
-      case 'feedback':
-        return store.feedback(args);
-      case 'consolidate':
-        return store.consolidate(args);
-      case 'health':
-        return store.health({ cloudSyncEnabled: Boolean(apiKey) });
-      case 'stats':
-        return store.stats(args);
-      case 'search_code':
-        return store.searchCode(args);
-      case 'explain_code':
-        return store.explainCode(args);
-      case 'list_agent_wings':
-        return store.listAgentWings(args);
-      case 'handoff_to_agent':
-        return store.handoffToAgent(args);
-      default:
-        throw new Error(`Unknown tool: "${name}"`);
-    }
-  }
-
-  async function callTool(name, args = {}) {
-    const localResult = executeLocalTool(name, args);
-    if (!apiKey) {
-      return localResult;
-    }
-    try {
-      const cloudResult = await syncWithCloud(name, args);
-      if (cloudResult && typeof cloudResult === 'object') {
-        return {
-          ...localResult,
-          cloud_sync: {
-            synced: true,
-            api_url: apiUrl,
-            cloud_response: cloudResult,
-          },
-        };
-      }
-    } catch (cloudErr) {
-      return {
-        ...localResult,
-        cloud_sync: {
-          synced: false,
-          api_url: apiUrl,
-          warning: cloudErr.message || String(cloudErr),
-        },
-      };
-    }
-    return localResult;
-  }
-
-  function readResource(uri) {
-    if (uri === 'memory://rules') {
-      const rules = store.state.memories
-        .filter((m) => !m.superseded_by && (m.type === 'core' || m.salience >= 0.8))
-        .sort((a, b) => b.salience - a.salience);
-      return {
-        uri,
-        mimeType: 'application/json',
-        text: JSON.stringify({ count: rules.length, rules }, null, 2),
-      };
+  async function readResource(uri) {
+    if (!MCP_RESOURCES.some((r) => r.uri === uri)) {
+      throw new Error(`Unknown resource URI: "${uri}"`);
     }
 
-    if (uri === 'memory://recent') {
-      const recent = store.state.memories
-        .filter((m) => !m.superseded_by)
-        .slice(-25)
-        .reverse();
-      return {
-        uri,
-        mimeType: 'application/json',
-        text: JSON.stringify({ count: recent.length, memories: recent }, null, 2),
-      };
+    const result = await forwardCloudRpc('resources/read', { uri });
+    if (Array.isArray(result?.contents) && result.contents[0]) {
+      return result.contents[0];
     }
-
-    if (uri === 'memory://stats') {
-      const healthData = store.health({ cloudSyncEnabled: Boolean(apiKey) });
-      return {
-        uri,
-        mimeType: 'application/json',
-        text: JSON.stringify(healthData, null, 2),
-      };
-    }
-
-    throw new Error(`Unknown resource URI: "${uri}"`);
+    return {
+      uri,
+      mimeType: 'application/json',
+      text: JSON.stringify(result, null, 2),
+    };
   }
 
   function getPrompt(name, promptArgs = {}) {
-    const ns = promptArgs.namespace || store.defaultNamespace;
+    const ns = promptArgs.namespace || defaultNamespace;
     if (name === 'memoria-session-start') {
       return {
-        description: 'Load session context and check Memoria health.',
+        description: 'Load session context and check Memoria Cloud health.',
         messages: [
           {
             role: 'user',
@@ -291,7 +246,7 @@ export function createMemoriaMcpService(options = {}) {
             error: { code: -32602, message: 'Missing resource "uri" parameter' },
           };
         }
-        const resourceContent = readResource(uri);
+        const resourceContent = await readResource(uri);
         return {
           jsonrpc: '2.0',
           id,
@@ -401,7 +356,6 @@ export function createMemoriaMcpService(options = {}) {
   }
 
   return {
-    store,
     callTool,
     readResource,
     getPrompt,

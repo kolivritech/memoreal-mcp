@@ -7,7 +7,7 @@
     "stasars",
     "stuk88"
   ],
-  "description": "Open-source deterministic long-term memory, BM25 + salience graph store, and code intelligence MCP server for Claude Code, OpenCode, Cursor, Windsurf, VS Code, and Claude Desktop. Runs 100% locally offline (~/.memoria/local-memories.json) with optional Memoria Cloud sync.",
+  "description": "Official Node.js MCP connector for Memoria Cloud (https://memoria.kolivri.com) — deterministic long-term memory, cross-session recall, and code intelligence for Claude Code, OpenCode, Cursor, Windsurf, VS Code, and Claude Desktop.",
   "repository": "https://github.com/kolivritech/memoria-mcp",
   "homepage": "https://memoria.kolivri.com",
   "license": "MIT",
