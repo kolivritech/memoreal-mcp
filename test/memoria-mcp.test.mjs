@@ -144,12 +144,15 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
 
       const promptsList = await client.request('prompts/list', {});
       assert.equal(promptsList.result.prompts.length, MCP_PROMPTS.length);
+
+      const pingRes = await client.request('ping', {});
+      assert.deepEqual(pingRes.result, {});
     } finally {
       await client.close();
     }
   });
 
-  it('requires MEMORIA_API_KEY when calling any Memoria Cloud tool', async () => {
+  it('requires MEMORIA_API_KEY when calling any Memoria Cloud tool or reading a resource', async () => {
     const client = createStdioMcpClient({ MEMORIA_API_KEY: '' });
     try {
       const callRes = await client.request('tools/call', {
@@ -158,12 +161,18 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
       });
       assert.equal(callRes.result.isError, true);
       assert.match(callRes.result.content[0].text, /Missing Memoria API key: set MEMORIA_API_KEY/);
+
+      const resRead = await client.request('resources/read', {
+        uri: 'memory://stats',
+      });
+      assert.ok(resRead.error, 'resources/read without API key returns JSON-RPC error');
+      assert.match(resRead.error.message, /Missing Memoria API key: set MEMORIA_API_KEY/);
     } finally {
       await client.close();
     }
   });
 
-  it('forwards authenticated tool calls over HTTP Bearer to MEMORIA_API_URL/v1/mcp', async () => {
+  it('forwards authenticated tool and resource calls over HTTP Bearer to MEMORIA_API_URL/v1/mcp', async () => {
     const client = createStdioMcpClient({
       MEMORIA_API_KEY: 'mem_dev_test_key_123',
       MEMORIA_API_URL: mockCloudUrl,
@@ -179,6 +188,12 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
       assert.equal(callRes.result.structuredContent.tool, 'encode_memory');
       assert.equal(callRes.result.structuredContent.arguments.namespace, 'proj-ns');
       assert.equal(receivedHeaders[0].authorization, 'Bearer mem_dev_test_key_123');
+
+      const resRead = await client.request('resources/read', {
+        uri: 'memory://stats',
+      });
+      assert.ok(Array.isArray(resRead.result.contents));
+      assert.equal(resRead.result.contents[0].uri, 'memory://stats');
     } finally {
       await client.close();
     }
