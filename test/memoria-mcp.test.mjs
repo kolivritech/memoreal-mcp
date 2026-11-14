@@ -149,6 +149,12 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
       const explainTool = toolsRes.result.tools.find((t) => t.name === 'explain_code');
       assert.deepEqual(explainTool.inputSchema.required, [], 'explain_code allows either symbol or target');
 
+      const initBadProto = await client.request('initialize', {
+        protocolVersion: { malformed: true },
+        capabilities: {},
+      });
+      assert.equal(initBadProto.result.protocolVersion, '2024-11-05', 'non-string protocolVersion falls back to 2024-11-05');
+
       const initAck = await client.request('initialized', {});
       assert.deepEqual(initAck.result, {}, 'initialized with request id responds without hanging');
 
@@ -217,7 +223,7 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
 
       const explainBySymbol = await client.request('tools/call', {
         name: 'explain_code',
-        arguments: { symbol: 'createMemoriaMcpService' },
+        arguments: { target: '', symbol: 'createMemoriaMcpService' },
       });
       assert.equal(explainBySymbol.result.isError, false);
       assert.equal(explainBySymbol.result.structuredContent.arguments.symbol, 'createMemoriaMcpService');
