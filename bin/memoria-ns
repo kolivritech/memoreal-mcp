@@ -1,0 +1,11 @@
+#!/bin/sh
+# Derive Memoria namespace from the current working directory.
+# Strips a /.claude/worktrees/... suffix so worktrees (and submodule worktrees
+# nested under them) share the parent project's namespace.
+# Usage: NS=$(memoria-ns)
+P="${1:-$PWD}"
+case "$P" in
+    */.claude/worktrees/*) P="${P%%/.claude/worktrees/*}" ;;
+    */.opencode/worktrees/*) P="${P%%/.opencode/worktrees/*}" ;;
+esac
+printf '%s' "$P" | tr '/' '-'

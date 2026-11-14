@@ -1,0 +1,19 @@
+# Smithery.ai MCP Registry Manifest for Memoria Cloud MCP
+startCommand:
+  type: http
+  configSchema:
+    type: object
+    required:
+      - memoriaApiKey
+    properties:
+      memoriaApiKey:
+        type: string
+        title: Memoria API Key
+        description: Your Memoria Cloud API key (mem_dev_..., mem_start_..., or mem_biz_...) from https://memoria.kolivri.com/account
+  commandFunction: |-
+    (config) => ({
+      url: "https://memoria.kolivri.com/v1/mcp",
+      headers: {
+        Authorization: `Bearer ${config.memoriaApiKey}`
+      }
+    })

@@ -1,0 +1,119 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "NS=$($HOME/.memoria/bin/memoria-ns); CFG_URL=''; CFG_KEY=''; if [ -f \"$HOME/.memoria/config.env\" ]; then CFG_URL=$(grep -E '^MEMORIA_API_URL=' \"$HOME/.memoria/config.env\" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\"'\"'\"' '); CFG_KEY=$(grep -E '^MEMORIA_API_KEY=' \"$HOME/.memoria/config.env\" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\"'\"'\"' '); fi; API_URL=\"${MEMORIA_API_URL:-${CFG_URL:-https://memoria.kolivri.com}}\"; API_KEY=\"${MEMORIA_API_KEY:-${MEMORIA_KEY:-$CFG_KEY}}\"; case \"$API_URL\" in https://*) TLS_ARGS=\"--proto =https --tlsv1.2\" ;; http://localhost*|http://127.0.0.1*) TLS_ARGS=\"\" ;; *) API_URL=\"https://memoria.kolivri.com\"; TLS_ARGS=\"--proto =https --tlsv1.2\" ;; esac; CURL_CFG=''; if [ -n \"$API_KEY\" ]; then CURL_CFG=$(printf 'header = \"Authorization: Bearer %s\"\\n' \"$API_KEY\"); fi; BRANCH=$(git branch --show-current 2>/dev/null || echo ''); RECENT=$(git log --oneline -3 2>/dev/null | tr '\\n' '; ' || echo ''); CHANGED=$(git diff --name-only HEAD 2>/dev/null | tr '\\n' ', ' || echo ''); GIT_CTX=''; if [ -n \"$BRANCH\" ]; then GIT_CTX=\"branch: $BRANCH\"; fi; if [ -n \"$RECENT\" ]; then GIT_CTX=\"$GIT_CTX, recent commits: $RECENT\"; fi; if [ -n \"$CHANGED\" ]; then GIT_CTX=\"$GIT_CTX, changed files: $CHANGED\"; fi; QUERY=\"previous tasks, plans, pending work, key decisions, progress, corrections, lessons learned\"; if [ -n \"$GIT_CTX\" ]; then QUERY=\"$QUERY, context for $GIT_CTX\"; fi; HEALTH=$(printf '%s' \"$CURL_CFG\" | curl -sf $TLS_ARGS -K - \"$API_URL/v1/health\" 2>&1) || { echo \"[memoria-session-start] namespace=$NS. Call build_context MCP tool with namespace \\\"$NS\\\" and query \\\"$QUERY\\\" and token_budget 4096 to load prior session context.\"; exit 0; }; PAYLOAD=$(jq -n --arg ns \"$NS\" --arg q \"$QUERY\" '{namespace: $ns, query: $q, token_budget: 4096}' 2>/dev/null || printf '{\"namespace\":\"%s\",\"query\":\"%s\",\"token_budget\":4096}' \"$NS\" \"$QUERY\"); CONTEXT=$(printf '%s' \"$CURL_CFG\" | curl -sf $TLS_ARGS -K - -X POST \"$API_URL/v1/memories/context\" -H 'Content-Type: application/json' -d \"$PAYLOAD\" 2>&1) || { echo \"[memoria-session-start] namespace=$NS. Health: $HEALTH. Call build_context MCP tool with namespace \\\"$NS\\\" and query \\\"$QUERY\\\" to load prior context.\"; exit 0; }; echo \"$HEALTH\"; echo \"---\"; echo \"$CONTEXT\"",
+            "timeout": 15,
+            "statusMessage": "Loading memory context from Memoria Cloud..."
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "NS=$($HOME/.memoria/bin/memoria-ns); echo \"[memoria-pre-compact] Context is about to be compressed. BEFORE compression happens, encode the following into Memoria (namespace: $NS) so nothing is lost:\n1. (type: episodic) Current task state: what you were working on, what is done, what remains\n2. (type: episodic) Key findings so far: bugs found, root causes identified, decisions made\n3. (type: episodic) Open questions and blockers\n4. (type: semantic) Any code patterns, architecture insights, or facts learned this session\nThis is critical — after compaction, detailed context is lost. Encode it NOW before responding.\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "NS=$($HOME/.memoria/bin/memoria-ns); echo \"[memoria-post-compact] Context was just compressed. Call build_context with namespace \\\"$NS\\\" and query \\\"current task, recent progress, findings, decisions, open questions, what was I working on\\\" and token_budget 2048 to restore critical context that may have been lost during compression.\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "MSG=$(cat /dev/stdin 2>/dev/null | jq -r '.prompt // empty' 2>/dev/null | tr '[:upper:]' '[:lower:]'); case \"$MSG\" in *\"don't\"*|*\"do not\"*|*\"stop\"*|*\"never\"*|*\"wrong\"*|*\"no,\"*|*\"no \"*|*\"actually\"*|*\"instead\"*|*\"not like that\"*|*\"that's wrong\"*|*\"incorrect\"*) NS=$($HOME/.memoria/bin/memoria-ns); echo \"[memoria-correction] The user appears to be correcting your approach. After addressing the correction, encode the lesson into Memoria (namespace: $NS, type: semantic, salience: 0.9) as a rule: what was wrong, what the correct approach is, and why. This ensures the mistake is never repeated in future sessions.\" ;; esac",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "TaskCreate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "NS=$($HOME/.memoria/bin/memoria-ns); echo \"[memoria-encode-task] A task was just created. Encode it into Memoria via encode_memory with type \\\"episodic\\\" and namespace \\\"$NS\\\". Include the task description, status, and which plan file it relates to (if any).\"",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "NS=$($HOME/.memoria/bin/memoria-ns); FILE=$(jq -r '.tool_input.file_path // empty' 2>/dev/null); case \"$FILE\" in *.claude/plans/*|*.opencode/plans/*|*design-log/*|*docs/*plan*|*docs/*roadmap*) echo \"[memoria-encode-plan] Plan file written: $FILE\nEncode this plan into Memoria (namespace: $NS). Create MULTIPLE memories:\n1. (type: semantic) Plan overview: title, goals, phase structure, and current status\n2. (type: semantic) Key decisions and their rationale from this plan\n3. (type: episodic) Progress snapshot: what phases are done, what is next, what is blocked\n4. (type: semantic) Relationships: other files, systems, or plans referenced in this document\n5. (type: semantic) Knowledge: patterns, techniques, or lessons relevant to executing this plan\n6. (type: episodic) Ideas and open questions found in the plan\n7. (type: semantic) Reflection: what is working well, what is not, what should change in approach\n8. (type: semantic) Dream: replay and consolidate — what patterns emerge across related memories, what connections between ideas were missed, what should be strengthened or let go\n9. (type: semantic) Workflow: how we are working on this plan — tools, processes, patterns that help or hinder\nInclude the file path in context metadata for every memory.\" ;; *.md|*.markdown) echo \"[memoria-encode-doc] Markdown document written: $FILE\nEncode into Memoria (namespace: $NS). Create memories for:\n1. (type: semantic) Document purpose, structure, and key content\n2. (type: semantic) Decisions, patterns, or knowledge worth remembering\n3. (type: episodic) Relationships to other project work and plans\nInclude the file path in context metadata.\" ;; *.lock|*.sum|*.toml|*.cfg|*.ini|*.env*) ;; *.rs|*.py|*.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.go|*.java|*.kt|*.kts|*.c|*.h|*.cc|*.cpp|*.hpp|*.cxx|*.cs|*.rb|*.php|*.swift|*.scala|*.sh|*.bash|*.zsh|*.sql|*.proto) echo \"[memoria-encode-code] Code file written: $FILE. Re-encode this code into Memoria (namespace: $NS) so search_code, explain_code, and find_references stay current: encode the key definitions (functions, types, classes) with their signatures, purpose, and notable logic as type semantic memories, salience 0.6, with the file path in context. Search before encoding so dedup can merge near-duplicates. For a full structural re-index of the project, run the memoria-sync-code skill.\" ;; *) echo \"[memoria-encode-file] File written: $FILE. Apply write gate: only encode if this file contains a key definition, decision, or pattern worth remembering across sessions. Skip boilerplate. If encoding, use namespace $NS, type semantic, salience 0.5. Include file path in context.\" ;; esac",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "NS=$($HOME/.memoria/bin/memoria-ns); FILE=$(jq -r '.tool_input.file_path // empty' 2>/dev/null); case \"$FILE\" in *.claude/plans/*|*.opencode/plans/*|*design-log/*|*docs/*plan*|*docs/*roadmap*) echo \"[memoria-encode-plan] Plan file updated: $FILE\nEncode this change into Memoria (namespace: $NS). Create memories for:\n1. (type: episodic) What specifically changed in the plan and why\n2. (type: episodic) Progress update: mark completed items, note new items or phase transitions\n3. (type: semantic) Any new decisions, ideas, or insights from this edit\n4. (type: semantic) New relationships or dependencies added\n5. (type: semantic) Reflection: does this change reveal something about the approach — what is working, what needs rethinking\n6. (type: semantic) Workflow ideas: better ways to work on this plan based on what just happened\nInclude the file path in context metadata.\" ;; *.md|*.markdown) echo \"[memoria-encode-doc] Markdown document edited: $FILE\nEncode the change into Memoria (namespace: $NS):\n1. (type: episodic) What changed and why\n2. (type: semantic) Any new knowledge, decisions, or patterns\nInclude the file path in context metadata.\" ;; *.lock|*.sum|*.toml|*.cfg|*.ini|*.env*) ;; *.rs|*.py|*.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.go|*.java|*.kt|*.kts|*.c|*.h|*.cc|*.cpp|*.hpp|*.cxx|*.cs|*.rb|*.php|*.swift|*.scala|*.sh|*.bash|*.zsh|*.sql|*.proto) echo \"[memoria-encode-code] Code file edited: $FILE. Re-encode the changed code into Memoria (namespace: $NS): encode the updated definitions and logic (what changed and the new behavior) as type semantic, salience 0.6, with the file path in context, so search_code, explain_code, and find_references reflect the current code. Search before encoding to avoid duplicates. For a full structural re-index, run the memoria-sync-code skill.\" ;; *) echo \"[memoria-encode-file] File edited: $FILE. Apply write gate: only encode if this edit represents a meaningful decision, pattern, or lesson. Skip routine changes. If encoding, use namespace $NS, type semantic, salience 0.5. Include file path and what changed.\" ;; esac",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(jq -r '.tool_input.file_path // empty' 2>/dev/null); case \"$FILE\" in *.claude/plans/*|*.opencode/plans/*|*design-log/*|*docs/*plan*|*docs/*roadmap*|*.md) NS=$($HOME/.memoria/bin/memoria-ns); echo \"[memoria-recall-doc] Reading: $FILE\nRecall related memories from Memoria (namespace: $NS) about this file: prior edits, progress updates, decisions, related plans, ideas, reflections, workflow patterns, consolidated patterns, and context from previous sessions. Show the user what Memoria knows about this file before proceeding.\" ;; esac",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "NS=$($HOME/.memoria/bin/memoria-ns); echo \"[memoria-update-task] A task was just completed. Encode into Memoria (namespace: $NS). Create memories for:\n1. (type: episodic) What was accomplished and which plan file it relates to\n2. (type: semantic) Lessons learned and knowledge gained from this task\n3. (type: semantic) Reflection: what went well, what was harder than expected, what to do differently next time\n4. (type: semantic) Workflow ideas: any process improvements or tool usage patterns discovered while doing this task\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "NS=$($HOME/.memoria/bin/memoria-ns); echo \"[memoria-session-end] Session is ending. Encode a session summary into Memoria (namespace: $NS) with the following write gate — ONLY encode if the item would change future behavior, represents a commitment, or is a decision worth preserving. Skip transient details.\n1. (type: episodic, salience: 0.7) Session summary: what was the goal, what was accomplished, what remains unfinished\n2. (type: semantic, salience: 0.8) Key decisions made and their rationale — only decisions that affect future work\n3. (type: semantic, salience: 0.8) Lessons learned: mistakes made, corrections received, patterns discovered\n4. (type: semantic, salience: 0.6) Code patterns or architecture insights worth remembering\n5. (type: episodic, salience: 0.5) Open questions and next steps for the next session\nInclude [[\\\"source\\\", \\\"session-end\\\"]] in context metadata for each. Then run consolidate on namespace \\\"$NS\\\".\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.kolivritech/memoria-mcp",
+  "description": "Deterministic long-term memory and code intelligence MCP server for 15 AI coding clients (500/500 = 100.0% on LongMemEval in 12.9 ms, 0 LLM tokens).",
+  "repository": {
+    "url": "https://github.com/kolivritech/memoria-mcp",
+    "source": "github"
+  },
+  "version_detail": {
+    "version": "1.0.0"
+  },
+  "remotes": [
+    {
+      "transport_type": "streamable-http",
+      "url": "https://memoria.kolivri.com/v1/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer <MEMORIA_API_KEY> from https://memoria.kolivri.com/account",
+          "is_required": true,
+          "is_secret": true
+        }
+      ]
+    }
+  ]
+}

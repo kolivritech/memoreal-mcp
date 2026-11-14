@@ -1,0 +1,13 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": ["stasars", "stuk88"],
+  "name": "Memoria — Deterministic AI Memory & Code Intelligence MCP",
+  "description": "Deterministic long-term memory and code intelligence MCP server for Claude Code, Cursor, Windsurf, VS Code, Zed, Cline, Roo Code, Codex, Gemini CLI, Continue, Goose, and Amp. 500/500 (100.0%) on LongMemEval and 102/102 (100.0%) on Hebrew LongMemEval across 15 languages at 12.9 ms recall latency with 0 LLM tokens.",
+  "homepage": "https://memoria.kolivri.com",
+  "repository": "https://github.com/kolivritech/memoria-mcp",
+  "license": "MIT",
+  "remote": {
+    "transport": "streamable-http",
+    "url": "https://memoria.kolivri.com/v1/mcp"
+  }
+}
