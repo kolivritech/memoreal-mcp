@@ -80,9 +80,11 @@ export function createMemoriaMcpService(options = {}) {
 
     const normalizedArgs = { ...args };
     if (name === 'explain_code') {
-      const sym = String(args.target ?? args.symbol ?? '').trim();
+      const targetStr = typeof args.target === 'string' ? args.target.trim() : '';
+      const symbolStr = typeof args.symbol === 'string' ? args.symbol.trim() : '';
+      const sym = targetStr || symbolStr;
       if (!sym) {
-        throw new Error('explain_code requires "target" or "symbol" parameter');
+        throw new Error('explain_code requires a non-empty string "target" or "symbol" parameter');
       }
       normalizedArgs.target = sym;
       normalizedArgs.symbol = sym;
