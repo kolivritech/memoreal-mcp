@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   MCP_PROMPTS,
   MCP_RESOURCES,
+  MCP_SERVER_INSTRUCTIONS,
   MCP_TOOLS,
 } from './schemas.mjs';
 
@@ -205,8 +206,13 @@ export function createMemoriaMcpService(options = {}) {
               name: '@kolivri/memoria-mcp',
               version: '1.0.0',
             },
+            instructions: MCP_SERVER_INSTRUCTIONS,
           },
         };
+      }
+
+      if (method === 'initialized' || method === 'notifications/initialized') {
+        return null;
       }
 
       if (method === 'ping') {
