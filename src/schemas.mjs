@@ -35,11 +35,16 @@ export const AGENT_WINGS = Object.freeze([
   },
 ]);
 
+export const MCP_SERVER_INSTRUCTIONS =
+  'Memoria Cloud provides deterministic long-term memory and code intelligence across sessions. Set MEMORIA_API_KEY from https://memoria.kolivri.com/register. At session start, call build_context with the workspace namespace and a task query (plus health in parallel). Before re-reading files or assuming missing context, call recall_memories, search_code, or explain_code. Persist durable architectural decisions, root causes, and user rules via encode_memory or batch_encode, rate recalled items with feedback, and run consolidate periodically to merge duplicates.';
+
 export const MCP_TOOLS = Object.freeze([
   {
     name: 'encode_memory',
+    title: 'Encode Memory',
     description:
       'Store a new memory with tier classification (episodic, semantic, buffer, core), salience weight, and key-value context metadata.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -72,7 +77,9 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'batch_encode',
+    title: 'Batch Encode Memories',
     description: 'Encode multiple memories atomically in a single batch call.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -98,8 +105,10 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'recall_memories',
+    title: 'Recall Memories',
     description:
       'Retrieve relevant memories ranked deterministically by BM25, salience, tier weight, feedback utility, and temporal freshness.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -126,8 +135,10 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'build_context',
+    title: 'Build Session Context',
     description:
       'Assemble a token-budgeted <memory_context> block combining Core rules, Semantic facts, and Episodic history for session grounding.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -149,7 +160,9 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'forget_memory',
+    title: 'Forget Memory',
     description: 'Delete a specific memory and its incident graph edges by ID.',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -160,7 +173,9 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'delete_by_context',
+    title: 'Delete Memories by Context',
     description: 'Delete all memories matching a specific context metadata [key, value] pair.',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -173,7 +188,9 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'feedback',
+    title: 'Record Memory Feedback',
     description: 'Record whether a recalled memory was useful and adjust its salience score.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -185,8 +202,10 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'consolidate',
+    title: 'Consolidate Namespace Memories',
     description:
       'Deduplicate memories within a namespace, link superseded records, and promote recurring high-salience episodic memories to Semantic tier.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -197,7 +216,9 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'health',
+    title: 'Check Memoria Health',
     description: 'Return Memoria engine health, storage status, tier distribution, and cloud sync mode.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {},
@@ -205,7 +226,9 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'stats',
+    title: 'Get Namespace Statistics',
     description: 'Return detailed memory, edge, and tier statistics for a namespace.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -216,8 +239,10 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'search_code',
+    title: 'Search Indexed Code',
     description:
       'Search indexed code definitions and workspace source files by symbol or query, returning ranked definitions with file and line numbers.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -235,12 +260,15 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'explain_code',
+    title: 'Explain Code Symbol',
     description:
       'Explain a code symbol: where it is defined, who references it across the workspace, related tests, and associated architectural memories.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
         target: { type: 'string', description: 'Symbol or identifier to explain.' },
+        symbol: { type: 'string', description: 'Alias for target symbol identifier.' },
         namespace: { type: 'string', description: 'Optional Memoria namespace.' },
         depth: {
           type: 'string',
@@ -255,8 +283,10 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'list_agent_wings',
+    title: 'List Specialist Agent Wings',
     description:
       'List specialist multi-agent wings (architect, reviewer, qa, security, ops), their active memory counts, and recent handoffs.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -266,8 +296,10 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'handoff_to_agent',
+    title: 'Hand Off Context to Specialist Wing',
     description:
       'Hand off task context, architectural findings, and selected memory IDs from one specialist agent wing to another.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {

@@ -1,5 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -135,9 +136,21 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
       });
       assert.equal(initRes.jsonrpc, '2.0');
       assert.equal(initRes.result.serverInfo.name, '@kolivri/memoria-mcp');
+      assert.ok(initRes.result.instructions?.includes('Memoria Cloud'), 'initialize returns server instructions');
 
       const toolsRes = await client.request('tools/list', {});
       assert.equal(toolsRes.result.tools.length, MCP_TOOLS.length);
+      assert.ok(
+        toolsRes.result.tools.every((t) => t.annotations && typeof t.annotations.readOnlyHint === 'boolean'),
+        'all tools publish MCP quality annotations'
+      );
+
+      const licenseText = fs.readFileSync(path.join(PKG_ROOT, 'LICENSE'), 'utf8');
+      assert.match(licenseText, /IN NO EVENT SHALL THE\s+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE/, 'full MIT LICENSE text present');
+
+      const glamaJson = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'glama.json'), 'utf8'));
+      assert.equal(glamaJson.$schema, 'https://glama.ai/mcp/schemas/server.json');
+      assert.ok(Array.isArray(glamaJson.maintainers) && glamaJson.maintainers.includes('stuk88'));
 
       const resList = await client.request('resources/list', {});
       assert.equal(resList.result.resources.length, MCP_RESOURCES.length);
