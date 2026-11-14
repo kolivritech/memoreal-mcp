@@ -144,6 +144,13 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
         toolsRes.result.tools.every((t) => t.annotations && typeof t.annotations.readOnlyHint === 'boolean'),
         'all tools publish MCP quality annotations'
       );
+      const feedbackTool = toolsRes.result.tools.find((t) => t.name === 'feedback');
+      assert.equal(feedbackTool.annotations.idempotentHint, false, 'feedback is marked non-idempotent');
+      const explainTool = toolsRes.result.tools.find((t) => t.name === 'explain_code');
+      assert.deepEqual(explainTool.inputSchema.required, [], 'explain_code allows either symbol or target');
+
+      const initAck = await client.request('initialized', {});
+      assert.deepEqual(initAck.result, {}, 'initialized with request id responds without hanging');
 
       const licenseText = fs.readFileSync(path.join(PKG_ROOT, 'LICENSE'), 'utf8');
       assert.match(licenseText, /IN NO EVENT SHALL THE\s+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE/, 'full MIT LICENSE text present');
@@ -207,6 +214,14 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
       });
       assert.ok(Array.isArray(resRead.result.contents));
       assert.equal(resRead.result.contents[0].uri, 'memory://stats');
+
+      const explainBySymbol = await client.request('tools/call', {
+        name: 'explain_code',
+        arguments: { symbol: 'createMemoriaMcpService' },
+      });
+      assert.equal(explainBySymbol.result.isError, false);
+      assert.equal(explainBySymbol.result.structuredContent.arguments.symbol, 'createMemoriaMcpService');
+      assert.equal(explainBySymbol.result.structuredContent.arguments.target, 'createMemoriaMcpService');
     } finally {
       await client.close();
     }

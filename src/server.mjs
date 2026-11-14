@@ -78,9 +78,19 @@ export function createMemoriaMcpService(options = {}) {
       throw new Error(`Unknown tool: "${name}"`);
     }
 
+    const normalizedArgs = { ...args };
+    if (name === 'explain_code') {
+      const sym = String(args.target ?? args.symbol ?? '').trim();
+      if (!sym) {
+        throw new Error('explain_code requires "target" or "symbol" parameter');
+      }
+      normalizedArgs.target = sym;
+      normalizedArgs.symbol = sym;
+    }
+
     const enrichedArgs = {
-      ...args,
-      ...(args.namespace === undefined && name !== 'health' ? { namespace: defaultNamespace } : {}),
+      ...normalizedArgs,
+      ...(normalizedArgs.namespace === undefined && name !== 'health' ? { namespace: defaultNamespace } : {}),
     };
 
     const result = await forwardCloudRpc(
@@ -192,11 +202,15 @@ export function createMemoriaMcpService(options = {}) {
 
     try {
       if (method === 'initialize') {
+        const requestedProto =
+          typeof params?.protocolVersion === 'string' && params.protocolVersion.trim()
+            ? params.protocolVersion.trim()
+            : '2024-11-05';
         return {
           jsonrpc: '2.0',
           id,
           result: {
-            protocolVersion: params?.protocolVersion || '2024-11-05',
+            protocolVersion: requestedProto,
             capabilities: {
               tools: { listChanged: false },
               resources: { subscribe: false, listChanged: false },
@@ -212,7 +226,11 @@ export function createMemoriaMcpService(options = {}) {
       }
 
       if (method === 'initialized' || method === 'notifications/initialized') {
-        return null;
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {},
+        };
       }
 
       if (method === 'ping') {

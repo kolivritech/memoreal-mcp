@@ -190,7 +190,7 @@ export const MCP_TOOLS = Object.freeze([
     name: 'feedback',
     title: 'Record Memory Feedback',
     description: 'Record whether a recalled memory was useful and adjust its salience score.',
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -267,8 +267,8 @@ export const MCP_TOOLS = Object.freeze([
     inputSchema: {
       type: 'object',
       properties: {
-        target: { type: 'string', description: 'Symbol or identifier to explain.' },
-        symbol: { type: 'string', description: 'Alias for target symbol identifier.' },
+        target: { type: 'string', description: 'Symbol or identifier to explain (provide target or symbol).' },
+        symbol: { type: 'string', description: 'Alias for target symbol identifier (provide target or symbol).' },
         namespace: { type: 'string', description: 'Optional Memoria namespace.' },
         depth: {
           type: 'string',
@@ -278,7 +278,7 @@ export const MCP_TOOLS = Object.freeze([
         },
         path: { type: 'string', description: 'Optional workspace directory to scan.' },
       },
-      required: ['target'],
+      required: [],
     },
   },
   {
@@ -303,26 +303,40 @@ export const MCP_TOOLS = Object.freeze([
     inputSchema: {
       type: 'object',
       properties: {
-        from_wing: {
+        wing: {
           type: 'string',
           enum: ['architect', 'reviewer', 'qa', 'security', 'ops'],
-          description: 'Originating specialist wing.',
+          description: 'Target specialist wing (alias: to_wing).',
         },
         to_wing: {
           type: 'string',
           enum: ['architect', 'reviewer', 'qa', 'security', 'ops'],
           description: 'Target specialist wing.',
         },
+        from_wing: {
+          type: 'string',
+          enum: ['architect', 'reviewer', 'qa', 'security', 'ops'],
+          description: 'Originating specialist wing.',
+        },
+        from_agent: {
+          type: 'string',
+          description: 'Originating agent or wing identifier.',
+        },
         summary: { type: 'string', description: 'Concise summary of findings and constraints.' },
-        task: { type: 'string', description: 'Actionable task for the target wing.' },
+        task: { type: 'string', description: 'Optional actionable task for the target wing.' },
         namespace: { type: 'string', description: 'Project or workspace namespace.' },
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional list of relevant file paths.',
+        },
         memory_ids: {
           type: 'array',
           items: { type: 'string' },
           description: 'Optional list of memory IDs to attach to the handoff.',
         },
       },
-      required: ['from_wing', 'to_wing', 'summary', 'task'],
+      required: ['summary'],
     },
   },
 ]);
