@@ -1,0 +1,18 @@
+{
+  "manifest_version": "0.1",
+  "name": "@kolivri/memoria-mcp",
+  "version": "1.0.0",
+  "description": "Open-source deterministic long-term memory, BM25 + salience graph store, and code intelligence MCP server.",
+  "author": {
+    "name": "Kolivri Ltd",
+    "url": "https://memoria.kolivri.com"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "src/server.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/src/server.mjs"]
+    }
+  }
+}

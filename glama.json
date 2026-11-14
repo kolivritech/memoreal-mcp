@@ -1,13 +1,72 @@
 {
   "$schema": "https://glama.ai/mcp/schemas/server.json",
-  "maintainers": ["stasars", "stuk88"],
-  "name": "Memoria — Deterministic AI Memory & Code Intelligence MCP",
-  "description": "Deterministic long-term memory and code intelligence MCP server for Claude Code, Cursor, Windsurf, VS Code, Zed, Cline, Roo Code, Codex, Gemini CLI, Continue, Goose, and Amp. 500/500 (100.0%) on LongMemEval and 102/102 (100.0%) on Hebrew LongMemEval across 15 languages at 12.9 ms recall latency with 0 LLM tokens.",
-  "homepage": "https://memoria.kolivri.com",
+  "name": "@kolivri/memoria-mcp",
+  "maintainer": "kolivritech",
+  "maintainers": [
+    "kolivritech",
+    "stasars",
+    "stuk88"
+  ],
+  "description": "Open-source deterministic long-term memory, BM25 + salience graph store, and code intelligence MCP server for Claude Code, OpenCode, Cursor, Windsurf, VS Code, and Claude Desktop. Runs 100% locally offline (~/.memoria/local-memories.json) with optional Memoria Cloud sync.",
   "repository": "https://github.com/kolivritech/memoria-mcp",
+  "homepage": "https://memoria.kolivri.com",
   "license": "MIT",
-  "remote": {
-    "transport": "streamable-http",
-    "url": "https://memoria.kolivri.com/v1/mcp"
-  }
+  "tools": [
+    {
+      "name": "encode_memory",
+      "description": "Store a new memory with tier classification (episodic, semantic, buffer, core), salience weight, and key-value context metadata."
+    },
+    {
+      "name": "batch_encode",
+      "description": "Encode multiple memories atomically in a single batch call."
+    },
+    {
+      "name": "recall_memories",
+      "description": "Retrieve relevant memories ranked deterministically by BM25, salience, tier weight, feedback utility, and temporal freshness."
+    },
+    {
+      "name": "build_context",
+      "description": "Assemble a token-budgeted <memory_context> block combining Core rules, Semantic facts, and Episodic history for session grounding."
+    },
+    {
+      "name": "forget_memory",
+      "description": "Delete a specific memory and its incident graph edges by ID."
+    },
+    {
+      "name": "delete_by_context",
+      "description": "Delete all memories matching a specific context metadata [key, value] pair."
+    },
+    {
+      "name": "feedback",
+      "description": "Record whether a recalled memory was useful and adjust its salience score."
+    },
+    {
+      "name": "consolidate",
+      "description": "Deduplicate memories within a namespace, link superseded records, and promote recurring high-salience episodic memories to Semantic tier."
+    },
+    {
+      "name": "health",
+      "description": "Return Memoria engine health, storage status, tier distribution, and cloud sync mode."
+    },
+    {
+      "name": "stats",
+      "description": "Return detailed memory, edge, and tier statistics for a namespace."
+    },
+    {
+      "name": "search_code",
+      "description": "Search indexed code definitions and workspace source files by symbol or query, returning ranked definitions with file and line numbers."
+    },
+    {
+      "name": "explain_code",
+      "description": "Explain a code symbol: where it is defined, who references it across the workspace, related tests, and associated architectural memories."
+    },
+    {
+      "name": "list_agent_wings",
+      "description": "List specialist multi-agent wings (architect, reviewer, qa, security, ops), their active memory counts, and recent handoffs."
+    },
+    {
+      "name": "handoff_to_agent",
+      "description": "Hand off task context, architectural findings, and selected memory IDs from one specialist agent wing to another."
+    }
+  ]
 }

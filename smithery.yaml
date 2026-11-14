@@ -1,19 +1,63 @@
-# Smithery.ai MCP Registry Manifest for Memoria Cloud MCP
+# Smithery MCP Server Manifest: https://smithery.ai/docs/config#smitheryyaml
+name: "@kolivri/memoria-mcp"
+description: Open-source deterministic long-term memory, BM25 + salience graph store, and code intelligence MCP server (local standalone + optional Memoria Cloud sync).
+tools:
+  - name: encode_memory
+    description: Store a new memory with tier classification (episodic, semantic, buffer, core), salience weight, and key-value context metadata.
+  - name: batch_encode
+    description: Encode multiple memories atomically in a single batch call.
+  - name: recall_memories
+    description: Retrieve relevant memories ranked deterministically by BM25, salience, tier weight, feedback utility, and temporal freshness.
+  - name: build_context
+    description: Assemble a token-budgeted <memory_context> block combining Core rules, Semantic facts, and Episodic history for session grounding.
+  - name: forget_memory
+    description: Delete a specific memory and its incident graph edges by ID.
+  - name: delete_by_context
+    description: Delete all memories matching a specific context metadata [key, value] pair.
+  - name: feedback
+    description: Record whether a recalled memory was useful and adjust its salience score.
+  - name: consolidate
+    description: Deduplicate memories within a namespace, link superseded records, and promote recurring high-salience episodic memories to Semantic tier.
+  - name: health
+    description: Return Memoria engine health, storage status, tier distribution, and cloud sync mode.
+  - name: stats
+    description: Return detailed memory, edge, and tier statistics for a namespace.
+  - name: search_code
+    description: Search indexed code definitions and workspace source files by symbol or query, returning ranked definitions with file and line numbers.
+  - name: explain_code
+    description: Explain a code symbol: where it is defined, who references it across the workspace, related tests, and associated architectural memories.
+  - name: list_agent_wings
+    description: List specialist multi-agent wings (architect, reviewer, qa, security, ops), their active memory counts, and recent handoffs.
+  - name: handoff_to_agent
+    description: Hand off task context, architectural findings, and selected memory IDs from one specialist agent wing to another.
 startCommand:
-  type: http
+  type: stdio
   configSchema:
     type: object
-    required:
-      - memoriaApiKey
     properties:
+      memoriaNamespace:
+        type: string
+        default: default
+        description: Default workspace namespace for local memories.
+      memoriaStoragePath:
+        type: string
+        description: Optional custom path for local JSON graph store (defaults to ~/.memoria/local-memories.json).
       memoriaApiKey:
         type: string
-        title: Memoria API Key
-        description: Your Memoria Cloud API key (mem_dev_..., mem_start_..., or mem_biz_...) from https://memoria.kolivri.com/account
+        description: Optional Memoria Cloud API key (mem_dev_...) to enable cloud sync with https://memoria.kolivri.com.
+      memoriaApiUrl:
+        type: string
+        default: https://memoria.kolivri.com
+        description: Optional Memoria Cloud API URL.
   commandFunction: |-
+    // Spawns: node src/server.mjs
     (config) => ({
-      url: "https://memoria.kolivri.com/v1/mcp",
-      headers: {
-        Authorization: `Bearer ${config.memoriaApiKey}`
+      command: 'node',
+      args: ['src/server.mjs'],
+      env: {
+        MEMORIA_NAMESPACE: config?.memoriaNamespace || 'default',
+        ...(config?.memoriaStoragePath ? { MEMORIA_STORAGE_PATH: config.memoriaStoragePath } : {}),
+        ...(config?.memoriaApiKey ? { MEMORIA_API_KEY: config.memoriaApiKey } : {}),
+        MEMORIA_API_URL: config?.memoriaApiUrl || 'https://memoria.kolivri.com'
       }
     })
