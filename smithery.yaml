@@ -1,6 +1,6 @@
 # Smithery MCP Server Manifest: https://smithery.ai/docs/config#smitheryyaml
 name: "@kolivri/memoria-mcp"
-description: Open-source deterministic long-term memory, BM25 + salience graph store, and code intelligence MCP server (local standalone + optional Memoria Cloud sync).
+description: Official Node.js MCP connector for Memoria Cloud (https://memoria.kolivri.com) — deterministic long-term memory and code intelligence for AI coding agents.
 tools:
   - name: encode_memory
     description: Store a new memory with tier classification (episodic, semantic, buffer, core), salience weight, and key-value context metadata.
@@ -34,30 +34,28 @@ startCommand:
   type: stdio
   configSchema:
     type: object
+    required:
+      - memoriaApiKey
     properties:
+      memoriaApiKey:
+        type: string
+        description: Your Memoria Cloud API key (mem_dev_...) from https://memoria.kolivri.com/register.
       memoriaNamespace:
         type: string
         default: default
-        description: Default workspace namespace for local memories.
-      memoriaStoragePath:
-        type: string
-        description: Optional custom path for local JSON graph store (defaults to ~/.memoria/local-memories.json).
-      memoriaApiKey:
-        type: string
-        description: Optional Memoria Cloud API key (mem_dev_...) to enable cloud sync with https://memoria.kolivri.com.
+        description: Default workspace namespace.
       memoriaApiUrl:
         type: string
         default: https://memoria.kolivri.com
-        description: Optional Memoria Cloud API URL.
+        description: Memoria Cloud API URL.
   commandFunction: |-
     // Spawns: node src/server.mjs
     (config) => ({
       command: 'node',
       args: ['src/server.mjs'],
       env: {
+        MEMORIA_API_KEY: config?.memoriaApiKey || '',
         MEMORIA_NAMESPACE: config?.memoriaNamespace || 'default',
-        ...(config?.memoriaStoragePath ? { MEMORIA_STORAGE_PATH: config.memoriaStoragePath } : {}),
-        ...(config?.memoriaApiKey ? { MEMORIA_API_KEY: config.memoriaApiKey } : {}),
         MEMORIA_API_URL: config?.memoriaApiUrl || 'https://memoria.kolivri.com'
       }
     })
