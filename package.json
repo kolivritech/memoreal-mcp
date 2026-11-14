@@ -1,0 +1,37 @@
+{
+  "name": "@kolivri/memoria-mcp",
+  "version": "1.0.0",
+  "description": "Memoria MCP Server — deterministic long-term memory, BM25 + salience graph store, and code intelligence for AI coding agents (local standalone + optional Memoria Cloud sync).",
+  "type": "module",
+  "bin": {
+    "memoria-mcp": "./src/server.mjs"
+  },
+  "main": "./src/memory-store.mjs",
+  "scripts": {
+    "start": "node ./src/server.mjs",
+    "test": "node --test ./test/memoria-mcp.test.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "memory",
+    "long-term-memory",
+    "bm25",
+    "code-intelligence",
+    "claude-code",
+    "opencode",
+    "cursor",
+    "kolivri",
+    "memoria"
+  ],
+  "author": "Kolivri Ltd",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kolivritech/memoria-mcp.git"
+  },
+  "homepage": "https://memoria.kolivri.com"
+}
