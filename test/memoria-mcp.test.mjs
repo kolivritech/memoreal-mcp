@@ -2,6 +2,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import { spawn } from 'node:child_process';
@@ -12,9 +13,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_PATH = path.resolve(__dirname, '../src/server.mjs');
 const PKG_ROOT = path.resolve(__dirname, '..');
 
-function createStdioMcpClient(envOverrides = {}) {
-  const child = spawn(process.execPath, [SERVER_PATH], {
-    cwd: PKG_ROOT,
+function createStdioMcpClient(envOverrides = {}, executablePath = SERVER_PATH, useExecDirect = false, cwdOverride = PKG_ROOT) {
+  const cmd = useExecDirect ? executablePath : process.execPath;
+  const args = useExecDirect ? [] : [executablePath];
+  const child = spawn(cmd, args, {
+    cwd: cwdOverride,
     env: {
       ...process.env,
       ...envOverrides,
@@ -236,6 +239,29 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
       assert.equal(explainBySymbol.result.structuredContent.arguments.target, 'createMemoriaMcpService');
     } finally {
       await client.close();
+    }
+  });
+
+  it('starts stdio server when executed through an npm/npx bin symlink', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'memoria-mcp-bin-'));
+    const binPath = path.join(tmpDir, 'memoria-mcp');
+    fs.symlinkSync(SERVER_PATH, binPath);
+    const pkg = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8'));
+    const client = createStdioMcpClient({ MEMORIA_API_KEY: '' }, binPath, true, tmpDir);
+    try {
+      const initRes = await client.request('initialize', {
+        protocolVersion: '2024-11-05',
+        clientInfo: { name: 'npx-symlink-test', version: '1.0.0' },
+        capabilities: {},
+      });
+      assert.equal(initRes.result.serverInfo.name, '@kolivri/memoria-mcp');
+      assert.equal(initRes.result.serverInfo.version, pkg.version);
+
+      const toolsRes = await client.request('tools/list', {});
+      assert.equal(toolsRes.result.tools.length, MCP_TOOLS.length);
+    } finally {
+      await client.close();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 });

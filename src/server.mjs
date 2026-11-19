@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,18 @@ import {
   MCP_SERVER_INSTRUCTIONS,
   MCP_TOOLS,
 } from './schemas.mjs';
+
+const PACKAGE_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    if (typeof pkg?.version === 'string' && pkg.version.trim()) {
+      return pkg.version.trim();
+    }
+  } catch {
+    // Fallback below if package.json cannot be read
+  }
+  return '1.0.1';
+})();
 
 export function createMemoriaMcpService(options = {}) {
   const apiUrl = (
@@ -220,7 +233,7 @@ export function createMemoriaMcpService(options = {}) {
             },
             serverInfo: {
               name: '@kolivri/memoria-mcp',
-              version: '1.0.0',
+              version: PACKAGE_VERSION,
             },
             instructions: MCP_SERVER_INSTRUCTIONS,
           },
@@ -439,8 +452,15 @@ export function startMcpStdioServer({
   };
 }
 
-const isDirectExecution =
-  Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isDirectExecution = (() => {
+  if (!process.argv[1]) return false;
+  const selfPath = fileURLToPath(import.meta.url);
+  try {
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(selfPath);
+  } catch {
+    return path.resolve(process.argv[1]) === selfPath;
+  }
+})();
 
 if (isDirectExecution) {
   startMcpStdioServer();

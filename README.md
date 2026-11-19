@@ -42,7 +42,7 @@ $env:MEMORIA_KEY="YOUR_MEMORIA_API_KEY"; irm https://memoria.kolivri.com/downloa
 ```bash
 claude mcp add memoria \
   -e MEMORIA_API_KEY="your-memoria-api-key" \
-  -- npx -y github:kolivritech/memoria-mcp
+  -- npx -y @kolivri/memoria-mcp
 ```
 
 ### 3. Cursor (`~/.cursor/mcp.json`) & Claude Desktop (`claude_desktop_config.json`)
@@ -52,7 +52,7 @@ claude mcp add memoria \
   "mcpServers": {
     "memoria": {
       "command": "npx",
-      "args": ["-y", "github:kolivritech/memoria-mcp"],
+      "args": ["-y", "@kolivri/memoria-mcp"],
       "env": {
         "MEMORIA_API_KEY": "your-memoria-api-key",
         "MEMORIA_NAMESPACE": "my-project"
@@ -69,7 +69,7 @@ claude mcp add memoria \
   "mcp": {
     "memoria": {
       "type": "local",
-      "command": ["npx", "-y", "github:kolivritech/memoria-mcp"],
+      "command": ["npx", "-y", "@kolivri/memoria-mcp"],
       "environment": {
         "MEMORIA_API_KEY": "your-memoria-api-key",
         "MEMORIA_NAMESPACE": "my-project"

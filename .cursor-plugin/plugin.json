@@ -1,7 +1,7 @@
 {
   "name": "memoria",
   "displayName": "Memoria — Deterministic AI Memory & Code Intelligence",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Deterministic long-term memory and code intelligence MCP plugin for Cursor (100% on LongMemEval in 12.9 ms, 0 LLM write tokens, 14 Cloud MCP tools, rules, skills, agents, and session hooks).",
   "author": {
     "name": "Kolivri",
