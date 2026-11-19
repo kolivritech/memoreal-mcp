@@ -10,7 +10,7 @@
   "main": "./src/server.mjs",
   "scripts": {
     "start": "node ./src/server.mjs",
-    "test": "node --test ./test/memoria-mcp.test.mjs"
+    "test": "node --test ./test/*.test.mjs"
   },
   "engines": {
     "node": ">=18.0.0"

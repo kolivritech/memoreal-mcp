@@ -1,0 +1,92 @@
+{
+  "title": "Memoria MCP Actor Input Schema",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "apiKey": {
+      "title": "Memoria API Key",
+      "type": "string",
+      "description": "Memoria Cloud API key from https://memoria.kolivri.com/register",
+      "editor": "textfield",
+      "isSecret": true
+    },
+    "namespace": {
+      "title": "Namespace",
+      "type": "string",
+      "description": "Workspace namespace",
+      "editor": "textfield",
+      "default": "default"
+    },
+    "action": {
+      "title": "Action",
+      "type": "string",
+      "description": "Memory action to execute or run as standby MCP server",
+      "editor": "select",
+      "default": "context",
+      "enum": [
+        "recall",
+        "context",
+        "encode",
+        "search_code",
+        "health",
+        "standby_mcp"
+      ],
+      "enumTitles": [
+        "Recall Memories (recall)",
+        "Build Context (context)",
+        "Encode Memory (encode)",
+        "Search Code Symbols (search_code)",
+        "Health & Engine Status (health)",
+        "Standby MCP Server (standby_mcp)"
+      ]
+    },
+    "query": {
+      "title": "Query",
+      "type": "string",
+      "description": "Query for recall, context, or search_code",
+      "editor": "textfield"
+    },
+    "content": {
+      "title": "Content",
+      "type": "string",
+      "description": "Memory text to encode when action is encode",
+      "editor": "textarea"
+    },
+    "type": {
+      "title": "Memory Tier",
+      "type": "string",
+      "description": "Memory tier/type when action is encode",
+      "editor": "select",
+      "default": "episodic",
+      "enum": [
+        "episodic",
+        "semantic",
+        "buffer",
+        "core"
+      ],
+      "enumTitles": [
+        "Episodic",
+        "Semantic",
+        "Buffer",
+        "Core"
+      ]
+    },
+    "salience": {
+      "title": "Salience",
+      "type": "number",
+      "description": "Salience score between 0.0 and 1.0",
+      "editor": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.5
+    },
+    "tokenBudget": {
+      "title": "Token Budget",
+      "type": "integer",
+      "description": "Token budget for recall or context assembly",
+      "editor": "number",
+      "default": 4096
+    }
+  },
+  "required": []
+}
