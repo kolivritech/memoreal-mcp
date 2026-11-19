@@ -3,7 +3,7 @@
   "name": "io.github.kolivritech/memoria-mcp",
   "title": "Memoria — Deterministic AI Memory & Code Intelligence MCP",
   "description": "Official Node.js MCP connector for Memoria Cloud (https://memoria.kolivri.com).",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "websiteUrl": "https://memoria.kolivri.com",
   "repository": {
     "url": "https://github.com/kolivritech/memoria-mcp",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@kolivri/memoria-mcp",
-      "version": "1.0.0",
+      "version": "1.0.2",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
