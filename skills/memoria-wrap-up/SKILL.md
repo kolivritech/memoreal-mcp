@@ -1,3 +1,8 @@
+---
+name: memoria-wrap-up
+description: Summarize session accomplishments, encode write-gated learnings into Memoria, and consolidate duplicates.
+---
+
 # /memoria-wrap-up — Session Wrap-Up
 
 Summarize this session and encode learnings into Memoria long-term memory.

@@ -1,17 +1,22 @@
+---
+name: memoria-doctor
+description: Diagnose Memoria Cloud connectivity, API key health, namespace statistics, and session hooks.
+---
+
 # /memoria-doctor — Diagnose Memoria Cloud Health
 
 Check that Memoria Cloud is connected and working correctly, and report any issues.
 
 ## Steps
 
-1. **Cloud Config check**: Verify `$HOME/.memoria/config.env` exists and defines `MEMORIA_API_URL` (default `https://brain.kolivri.com`) and a non-empty `MEMORIA_API_KEY`.
+1. **Cloud Config check**: Verify `$HOME/.memoria/config.env` exists and defines `MEMORIA_API_URL` (default `https://memoria.kolivri.com`) and a non-empty `MEMORIA_API_KEY`.
    - If missing or empty, instruct the user to run the installer from `/account` or `/downloads` with `MEMORIA_KEY=mem_dev_...`.
 
 2. **Cloud HTTP API check**: Run (passing the Bearer token via `curl -K -` stdin so it is never exposed in `ps`):
    ```bash
    API_URL=$(grep -E '^MEMORIA_API_URL=' "$HOME/.memoria/config.env" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '"'\'' ')
    API_KEY=$(grep -E '^MEMORIA_API_KEY=' "$HOME/.memoria/config.env" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '"'\'' ')
-   printf 'header = "Authorization: Bearer %s"\n' "$API_KEY" | curl -sf --proto '=https' --tlsv1.2 -K - "${API_URL:-https://brain.kolivri.com}/v1/health"
+   printf 'header = "Authorization: Bearer %s"\n' "$API_KEY" | curl -sf --proto '=https' --tlsv1.2 -K - "${API_URL:-https://memoria.kolivri.com}/v1/health"
    ```
    Report HTTP reachability and cloud engine status.
 
@@ -31,7 +36,7 @@ Check that Memoria Cloud is connected and working correctly, and report any issu
 | Check | Status | Details |
 |-------|--------|---------|
 | Cloud Config | OK/MISSING | `~/.memoria/config.env` & API key |
-| Cloud HTTP API | OK/FAIL | `https://brain.kolivri.com/v1/health` |
+| Cloud HTTP API | OK/FAIL | `https://memoria.kolivri.com/v1/health` |
 | MCP server | OK/FAIL | memory count, edge count |
 | Namespace | OK/EMPTY | namespace name, memory count |
 | Hooks | OK/MISSING | Claude Code / OpenCode hooks |

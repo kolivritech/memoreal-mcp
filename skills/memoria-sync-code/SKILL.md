@@ -10,14 +10,14 @@ Index the current working directory's code project into Memoria.
 
 This extracts function definitions, class structures, logic patterns, doc comments, TODOs, test names, config/manifest entries (Cargo.toml, package.json, yaml, …), and git history into semantic memories that power the `search_code`, `explain_code`, `find_references`, `find_file`, `explain_diff`, and `explain_error` MCP tools. It also records the containment metadata (relative file paths, directory paths, line spans, per-file and per-directory nodes with rollup notes) that the `navigate` and `get_hierarchy` MCP tools use to walk the project as a hierarchical map.
 
-Determine the project path from the current working directory. Read `MEMORIA_API_URL` and `MEMORIA_API_KEY` from `$HOME/.memoria/config.env` (without sourcing) and run against the Memoria Cloud API (`https://brain.kolivri.com`):
+Determine the project path from the current working directory. Read `MEMORIA_API_URL` and `MEMORIA_API_KEY` from `$HOME/.memoria/config.env` (without sourcing) and run against the Memoria Cloud API (`https://memoria.kolivri.com`):
 
 ```bash
 API_URL=$(grep -E '^MEMORIA_API_URL=' "$HOME/.memoria/config.env" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '"'\'' ')
 API_KEY=$(grep -E '^MEMORIA_API_KEY=' "$HOME/.memoria/config.env" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '"'\'' ')
 "${MEMORIA_SYNC_BIN:-$HOME/.memoria/bin/memoria-sync}" code \
   --path "$CWD" \
-  --api-url "${API_URL:-https://brain.kolivri.com}" \
+  --api-url "${API_URL:-https://memoria.kolivri.com}" \
   ${API_KEY:+--api-key "$API_KEY"} \
   $ARGUMENTS
 ```

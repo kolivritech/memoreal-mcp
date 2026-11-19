@@ -1,4 +1,5 @@
 ---
+name: memoria-workflow
 description: Use Memoria MCP tools for deterministic cross-session memory, belief revision, and code intelligence before grepping files blind
 alwaysApply: true
 ---
