@@ -121,4 +121,4 @@ npm test
 
 ## License
 
-Connector package licensed under MIT. Memoria Cloud (`https://memoria.kolivri.com`) is a commercial hosted service by [Kolivri Ltd](https://kolivri.com).
+Connector package licensed under MIT. Memoria Cloud (`https://memoria.kolivri.com`) is a commercial hosted service by [Kolivri](https://kolivri.com).
