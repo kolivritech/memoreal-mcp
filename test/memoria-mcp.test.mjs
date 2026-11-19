@@ -144,6 +144,10 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
         toolsRes.result.tools.every((t) => t.annotations && typeof t.annotations.readOnlyHint === 'boolean'),
         'all tools publish MCP quality annotations'
       );
+      assert.ok(
+        toolsRes.result.tools.every((t) => t.outputSchema && t.outputSchema.type === 'object' && /Use (when|at|to|after|before)/i.test(t.description)),
+        'all 14 tools publish outputSchema and explicit usage/disambiguation guidance for Glama TDQS 4.5+'
+      );
       const feedbackTool = toolsRes.result.tools.find((t) => t.name === 'feedback');
       assert.equal(feedbackTool.annotations.idempotentHint, false, 'feedback is marked non-idempotent');
       const explainTool = toolsRes.result.tools.find((t) => t.name === 'explain_code');

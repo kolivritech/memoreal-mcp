@@ -29,12 +29,12 @@ Automatically configures Claude Code, Cursor, Windsurf, VS Code, Claude Desktop,
 
 ```bash
 # macOS / Linux / WSL
-curl -fsSL --proto '=https' --tlsv1.2 https://memoria.kolivri.com/install.sh | bash -s -- --api-key YOUR_MEMORIA_API_KEY
+curl -fsSL --proto '=https' --tlsv1.2 https://memoria.kolivri.com/downloads/install.sh | MEMORIA_KEY=YOUR_MEMORIA_API_KEY bash
 ```
 
 ```powershell
 # Windows PowerShell
-$env:MEMORIA_API_KEY="YOUR_MEMORIA_API_KEY"; irm https://memoria.kolivri.com/downloads/install.ps1 | iex
+$env:MEMORIA_KEY="YOUR_MEMORIA_API_KEY"; irm https://memoria.kolivri.com/downloads/install.ps1 | iex
 ```
 
 ### 2. Claude Code (`claude mcp add`)
