@@ -160,6 +160,8 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
 
       const licenseText = fs.readFileSync(path.join(PKG_ROOT, 'LICENSE'), 'utf8');
       assert.match(licenseText, /IN NO EVENT SHALL THE\s+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE/, 'full MIT LICENSE text present');
+      assert.match(licenseText, /Copyright \(c\) 2026 Kolivri$/m);
+      assert.doesNotMatch(licenseText, /Kolivri Ltd/i);
 
       const glamaJson = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'glama.json'), 'utf8'));
       assert.equal(glamaJson.$schema, 'https://glama.ai/mcp/schemas/server.json');

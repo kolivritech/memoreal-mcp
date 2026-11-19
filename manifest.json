@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Official Node.js MCP connector for Memoria Cloud (https://memoria.kolivri.com).",
   "author": {
-    "name": "Kolivri Ltd",
+    "name": "Kolivri",
     "url": "https://memoria.kolivri.com"
   },
   "server": {
