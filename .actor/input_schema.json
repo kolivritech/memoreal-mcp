@@ -1,12 +1,12 @@
 {
-  "title": "Memoria MCP Actor Input Schema",
+  "title": "Memoreal MCP Actor Input Schema",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
     "apiKey": {
-      "title": "Memoria API Key",
+      "title": "Memoreal API Key",
       "type": "string",
-      "description": "Memoria Cloud API key from https://memoria.kolivri.com/register",
+      "description": "Memoreal Cloud API key from https://memoreal.kolivri.com/register",
       "editor": "textfield",
       "isSecret": true
     },

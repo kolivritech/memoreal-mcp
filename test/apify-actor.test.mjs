@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import {
   normalizeInput,
   readApifyInput,
+  executeMemorealActorAction,
   executeMemoriaActorAction,
   outputApifyResult,
   main,
@@ -80,10 +81,11 @@ describe('Apify Actor Specification and Runner Suite', () => {
     const actorConfig = JSON.parse(fs.readFileSync(actorJsonPath, 'utf8'));
 
     assert.equal(actorConfig.actorSpecification, 1);
-    assert.equal(actorConfig.name, 'memoria-mcp');
+    assert.equal(actorConfig.name, 'memoreal-mcp');
     assert.equal(actorConfig.input, './input_schema.json');
     assert.equal(actorConfig.dockerfile, './Dockerfile');
     assert.equal(actorConfig.readme, '../README.md');
+    assert.equal(actorConfig.environmentVariables?.MEMOREAL_API_URL, 'https://memoreal.kolivri.com');
     assert.equal(actorConfig.environmentVariables?.MEMORIA_API_URL, 'https://memoria.kolivri.com');
   });
 
@@ -162,31 +164,36 @@ describe('Apify Actor Specification and Runner Suite', () => {
   });
 
   it('throws descriptive error when API key is missing for tool actions', async () => {
-    const origKey = process.env.MEMORIA_API_KEY;
+    const origMemoreal = process.env.MEMOREAL_API_KEY;
+    const origMemoria = process.env.MEMORIA_API_KEY;
+    delete process.env.MEMOREAL_API_KEY;
     delete process.env.MEMORIA_API_KEY;
     try {
       await assert.rejects(
         () =>
-          executeMemoriaActorAction({
+          executeMemorealActorAction({
             action: 'context',
             apiKey: '',
             apiUrl: mockServerUrl,
           }),
-        /Missing Memoria API key/
+        /Missing Memoreal API key/
       );
 
       await assert.rejects(
         () =>
-          executeMemoriaActorAction({
+          executeMemorealActorAction({
             action: 'health',
             apiKey: '',
             apiUrl: mockServerUrl,
           }),
-        /Missing Memoria API key/
+        /Missing Memoreal API key/
       );
     } finally {
-      if (origKey !== undefined) {
-        process.env.MEMORIA_API_KEY = origKey;
+      if (origMemoreal !== undefined) {
+        process.env.MEMOREAL_API_KEY = origMemoreal;
+      }
+      if (origMemoria !== undefined) {
+        process.env.MEMORIA_API_KEY = origMemoria;
       }
     }
   });
@@ -194,7 +201,7 @@ describe('Apify Actor Specification and Runner Suite', () => {
   it('rejects unsupported actions with helpful allowed actions list', async () => {
     await assert.rejects(
       () =>
-        executeMemoriaActorAction({
+        executeMemorealActorAction({
           action: 'invalid_action_xyz',
           apiKey: 'test-key',
         }),
@@ -204,7 +211,7 @@ describe('Apify Actor Specification and Runner Suite', () => {
 
   it('dispatches action: "context" to build_context tool', async () => {
     recordedRequests = [];
-    const res = await executeMemoriaActorAction({
+    const res = await executeMemorealActorAction({
       action: 'context',
       apiKey: 'mem_test_token_ctx',
       apiUrl: mockServerUrl,
@@ -225,7 +232,7 @@ describe('Apify Actor Specification and Runner Suite', () => {
 
   it('dispatches action: "recall" to recall_memories tool', async () => {
     recordedRequests = [];
-    const res = await executeMemoriaActorAction({
+    const res = await executeMemorealActorAction({
       action: 'recall',
       apiKey: 'mem_test_token_recall',
       apiUrl: mockServerUrl,
@@ -244,7 +251,7 @@ describe('Apify Actor Specification and Runner Suite', () => {
   it('dispatches action: "encode" to encode_memory tool and enforces content', async () => {
     await assert.rejects(
       () =>
-        executeMemoriaActorAction({
+        executeMemorealActorAction({
           action: 'encode',
           apiKey: 'mem_test_key',
           apiUrl: mockServerUrl,
@@ -254,7 +261,7 @@ describe('Apify Actor Specification and Runner Suite', () => {
     );
 
     recordedRequests = [];
-    const res = await executeMemoriaActorAction({
+    const res = await executeMemorealActorAction({
       action: 'encode',
       apiKey: 'mem_test_token_encode',
       apiUrl: mockServerUrl,
@@ -274,7 +281,7 @@ describe('Apify Actor Specification and Runner Suite', () => {
 
   it('dispatches action: "health" to health tool', async () => {
     recordedRequests = [];
-    const res = await executeMemoriaActorAction({
+    const res = await executeMemorealActorAction({
       action: 'health',
       apiKey: 'mem_test_token_health',
       apiUrl: mockServerUrl,
@@ -287,22 +294,22 @@ describe('Apify Actor Specification and Runner Suite', () => {
 
   it('dispatches action: "search_code" to search_code tool', async () => {
     recordedRequests = [];
-    const res = await executeMemoriaActorAction({
+    const res = await executeMemorealActorAction({
       action: 'search_code',
       apiKey: 'mem_test_token_code',
       apiUrl: mockServerUrl,
       namespace: 'code-ns',
-      query: 'createMemoriaMcpService',
+      query: 'createMemorealMcpService',
     });
 
     assert.equal(res.ok, true);
     assert.equal(res.action, 'search_code');
     assert.equal(res.result.dispatched_tool, 'search_code');
-    assert.equal(res.result.dispatched_args.query, 'createMemoriaMcpService');
+    assert.equal(res.result.dispatched_args.query, 'createMemorealMcpService');
   });
 
   it('supports action: "standby_mcp" and boots stdio server', async () => {
-    const res = await executeMemoriaActorAction({
+    const res = await executeMemorealActorAction({
       action: 'standby_mcp',
       apiKey: 'mem_test_token_standby',
       apiUrl: mockServerUrl,
@@ -348,5 +355,40 @@ describe('Apify Actor Specification and Runner Suite', () => {
     });
     assert.equal(errorResult.ok, false);
     assert.match(errorResult.error, /Unsupported action/);
+  });
+
+  it('supports MEMOREAL_API_KEY and legacy MEMORIA_API_KEY and executeMemoriaActorAction alias', async () => {
+    recordedRequests = [];
+    const origMemoreal = process.env.MEMOREAL_API_KEY;
+    const origMemoria = process.env.MEMORIA_API_KEY;
+    delete process.env.MEMOREAL_API_KEY;
+    process.env.MEMORIA_API_KEY = 'legacy_env_key_apify';
+    try {
+      const resLegacy = await executeMemoriaActorAction({
+        action: 'health',
+        apiUrl: mockServerUrl,
+      });
+      assert.equal(resLegacy.ok, true);
+      assert.equal(resLegacy.result.received_auth, 'Bearer legacy_env_key_apify');
+
+      process.env.MEMOREAL_API_KEY = 'canonical_env_key_apify';
+      const resCanonical = await executeMemorealActorAction({
+        action: 'health',
+        apiUrl: mockServerUrl,
+      });
+      assert.equal(resCanonical.ok, true);
+      assert.equal(resCanonical.result.received_auth, 'Bearer canonical_env_key_apify');
+    } finally {
+      if (origMemoreal !== undefined) {
+        process.env.MEMOREAL_API_KEY = origMemoreal;
+      } else {
+        delete process.env.MEMOREAL_API_KEY;
+      }
+      if (origMemoria !== undefined) {
+        process.env.MEMORIA_API_KEY = origMemoria;
+      } else {
+        delete process.env.MEMORIA_API_KEY;
+      }
+    }
   });
 });

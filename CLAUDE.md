@@ -1,9 +1,9 @@
-<!-- memoria:start -->
-## Memoria Long-Term Memory
+<!-- memoreal:start -->
+## Memoreal Long-Term Memory
 
-This session has Memoria MCP tools available. Use them to access long-term memory across sessions.
+This session has Memoreal MCP tools available. Use them to access long-term memory across sessions.
 
-### Always Try Memoria First
+### Always Try Memoreal First
 
 - **Finding context**: Call `build_context` with the current namespace and a query describing what you need. This returns token-budgeted context from all previous sessions, tasks, plans, and decisions.
 - **Recalling past work**: Use `recall_memories` before assuming you don't have context. Previous conversations, decisions, and knowledge are indexed.
@@ -30,7 +30,7 @@ Indexed namespaces (e.g. `code/{project}`) are a containment map: **project → 
 
 **Pick the layer by intent**: strategic / "what is this" questions read near the top (project, directory, file notes); "how exactly does this work" reads the bottom (definition, chunk). You choose depth by where you stop zooming; the node's `kind` tells you which layer you're on.
 
-**Prefer the map over re-searching**: a `navigate`/`get_hierarchy` move is a few graph reads; a fresh `search_code` re-pays full ranking and returns a flat list with no position. Use `search_code` to find an *entry point*, then `navigate`/`get_hierarchy` from there. Prefer both over reading whole files when you only need structure or a single definition.
+**Prefer the map over re-searching**: a `navigate`/`get_hierarchy` move is a few graph reads; a fresh `search_code` re-pays full ranking and returns a flat list with no position. Use `search_code` to find an *entry point*, then `navigate`/`get_hierarchy` from there. Prefer both over reading whole files when you only need structure or one definition.
 
 ### Session Start
 
@@ -43,7 +43,7 @@ This loads all prior tasks, plans, decisions, and context from previous sessions
 
 ### Namespace
 
-All Memoria operations require a namespace. Derive it from the current working directory by replacing `/` with `-`.
+All Memoreal operations require a namespace. Derive it from the current working directory by replacing `/` with `-`.
 Example: `/Users/alice/projects/myapp` becomes `-Users-alice-projects-myapp`
 
 ### Memory Hygiene
@@ -51,4 +51,4 @@ Example: `/Users/alice/projects/myapp` becomes `-Users-alice-projects-myapp`
 - Search before encoding to avoid duplicates
 - Give `feedback` on recalled memories to improve retrieval quality
 - Run `consolidate` periodically to merge duplicates and detect contradictions
-<!-- memoria:end -->
+<!-- memoreal:end -->

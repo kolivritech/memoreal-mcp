@@ -1,0 +1,11 @@
+---
+name: memoreal-workflow
+description: Use Memoreal MCP tools for deterministic cross-session memory, belief revision, and code intelligence before grepping files blind
+alwaysApply: true
+---
+
+memoreal-workflow:
+
+- At the start of a coding session, call `build_context` with your project `namespace` and a concise task query (and `health` in parallel) to load prior architectural decisions, user rules, and active tasks into Memoreal.
+- Before grepping blind or assuming missing context, call `recall_memories`, `search_code`, or `explain_code`.
+- Persist durable architectural decisions, bug root causes, and user corrections with `encode_memory` (or `batch_encode` for multiple facts), rate recalled memories with `feedback`, and run `consolidate` at session wrap-up.
