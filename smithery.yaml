@@ -1,6 +1,6 @@
 # Smithery MCP Server Manifest: https://smithery.ai/docs/config#smitheryyaml
-name: "@kolivri/memoria-mcp"
-description: Official Node.js MCP connector for Memoria Cloud (https://memoria.kolivri.com) — deterministic long-term memory and code intelligence for AI coding agents.
+name: "@kolivri/memoreal-mcp"
+description: Official Node.js MCP connector for Memoreal Cloud (https://memoreal.kolivri.com) — deterministic long-term memory and code intelligence for AI coding agents.
 tools:
   - name: encode_memory
     description: Store a new memory with tier classification (episodic, semantic, buffer, core), salience weight, and key-value context metadata.
@@ -19,7 +19,7 @@ tools:
   - name: consolidate
     description: Deduplicate memories within a namespace, link superseded records, and promote recurring high-salience episodic memories to Semantic tier.
   - name: health
-    description: Return Memoria engine health, storage status, tier distribution, and cloud sync mode.
+    description: Return Memoreal engine health, storage status, tier distribution, and cloud sync mode.
   - name: stats
     description: Return detailed memory, edge, and tier statistics for a namespace.
   - name: search_code
@@ -35,27 +35,27 @@ startCommand:
   configSchema:
     type: object
     required:
-      - memoriaApiKey
+      - memorealApiKey
     properties:
-      memoriaApiKey:
+      memorealApiKey:
         type: string
-        description: Your Memoria Cloud API key (mem_dev_...) from https://memoria.kolivri.com/register.
-      memoriaNamespace:
+        description: Your Memoreal Cloud API key (mem_dev_...) from https://memoreal.kolivri.com/register.
+      memorealNamespace:
         type: string
         default: default
         description: Default workspace namespace.
-      memoriaApiUrl:
+      memorealApiUrl:
         type: string
-        default: https://memoria.kolivri.com
-        description: Memoria Cloud API URL.
+        default: https://memoreal.kolivri.com
+        description: Memoreal Cloud API URL.
   commandFunction: |-
     // Spawns: node src/server.mjs
     (config) => ({
       command: 'node',
       args: ['src/server.mjs'],
       env: {
-        MEMORIA_API_KEY: config?.memoriaApiKey || '',
-        MEMORIA_NAMESPACE: config?.memoriaNamespace || 'default',
-        MEMORIA_API_URL: config?.memoriaApiUrl || 'https://memoria.kolivri.com'
+        MEMOREAL_API_KEY: config?.memorealApiKey || config?.memoriaApiKey || '',
+        MEMOREAL_NAMESPACE: config?.memorealNamespace || config?.memoriaNamespace || 'default',
+        MEMOREAL_API_URL: config?.memorealApiUrl || config?.memoriaApiUrl || 'https://memoreal.kolivri.com'
       }
     })

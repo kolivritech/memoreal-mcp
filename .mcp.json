@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "memoria": {
+    "memoreal": {
       "type": "http",
-      "url": "https://memoria.kolivri.com/v1/mcp",
+      "url": "https://memoreal.kolivri.com/v1/mcp",
       "headers": {
-        "Authorization": "Bearer ${MEMORIA_API_KEY}"
+        "Authorization": "Bearer ${MEMOREAL_API_KEY}"
       }
     }
   }

@@ -1,11 +1,12 @@
 {
   "actorSpecification": 1,
-  "name": "memoria-mcp",
-  "title": "Memoria — Deterministic AI Memory & Code Intelligence (MCP / Standby / Task)",
+  "name": "memoreal-mcp",
+  "title": "Memoreal — Deterministic AI Memory & Code Intelligence (MCP / Standby / Task)",
   "description": "Deterministic long-term memory and code intelligence engine for AI agents (100% on LongMemEval in 12.9 ms, 0 LLM tokens, 14 Cloud MCP tools).",
   "version": "1.0",
   "buildTag": "latest",
   "environmentVariables": {
+    "MEMOREAL_API_URL": "https://memoreal.kolivri.com",
     "MEMORIA_API_URL": "https://memoria.kolivri.com"
   },
   "input": "./input_schema.json",

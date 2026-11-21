@@ -1,8 +1,13 @@
 #!/bin/sh
-# Derive Memoria namespace from the current working directory.
+# Backward-compatible alias for memoreal-ns.
+# Derive Memoreal namespace from the current working directory.
 # Strips a /.claude/worktrees/... suffix so worktrees (and submodule worktrees
 # nested under them) share the parent project's namespace.
 # Usage: NS=$(memoria-ns)
+DIR="$(dirname "$0")"
+if [ -x "$DIR/memoreal-ns" ]; then
+    exec "$DIR/memoreal-ns" "$@"
+fi
 P="${1:-$PWD}"
 case "$P" in
     */.claude/worktrees/*) P="${P%%/.claude/worktrees/*}" ;;

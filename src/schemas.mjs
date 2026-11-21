@@ -36,14 +36,14 @@ export const AGENT_WINGS = Object.freeze([
 ]);
 
 export const MCP_SERVER_INSTRUCTIONS =
-  'Memoria Cloud provides deterministic long-term memory and code intelligence across sessions. Set MEMORIA_API_KEY from https://memoria.kolivri.com/register. At session start, call build_context with the workspace namespace and a task query (plus health in parallel). Before re-reading files or assuming missing context, call recall_memories, search_code, or explain_code. Persist durable architectural decisions, root causes, and user rules via encode_memory or batch_encode, rate recalled items with feedback, and run consolidate periodically to merge duplicates.';
+  'Memoreal Cloud provides deterministic long-term memory and code intelligence across sessions. Set MEMOREAL_API_KEY from https://memoreal.kolivri.com/register. At session start, call build_context with the workspace namespace and a task query (plus health in parallel). Before re-reading files or assuming missing context, call recall_memories, search_code, or explain_code. Persist durable architectural decisions, root causes, and user rules via encode_memory or batch_encode, rate recalled items with feedback, and run consolidate periodically to merge duplicates.';
 
 export const MCP_TOOLS = Object.freeze([
   {
     name: 'encode_memory',
     title: 'Encode Memory',
     description:
-      'Store a single memory record in Memoria Cloud (requires MEMORIA_API_KEY; consumes 1 Write API call; non-idempotent: encoding identical text twice creates separate IDs until consolidate is run) and return { id, namespace, salience }. Defaults type to "episodic", salience to 0.5 (items >=0.7 or semantic/core surface in memory://rules), and namespace to MEMORIA_NAMESPACE or "default" while rejecting reserved "org:" prefixes. Use when persisting one architectural decision, bug root cause, or user rule; use batch_encode instead for 2+ memories at once, or handoff_to_agent for cross-wing task handoffs.',
+      'Store a single memory record in Memoreal Cloud (requires MEMOREAL_API_KEY; consumes 1 Write API call; non-idempotent: encoding identical text twice creates separate IDs until consolidate is run) and return { id, namespace, salience }. Defaults type to "episodic", salience to 0.5 (items >=0.7 or semantic/core surface in memory://rules), and namespace to MEMOREAL_NAMESPACE or "default" while rejecting reserved "org:" prefixes. Use when persisting one architectural decision, bug root cause, or user rule; use batch_encode instead for 2+ memories at once, or handoff_to_agent for cross-wing task handoffs.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -57,7 +57,7 @@ export const MCP_TOOLS = Object.freeze([
         },
         namespace: {
           type: 'string',
-          description: 'Logical project or workspace namespace (defaults to MEMORIA_NAMESPACE or "default"; never prefix with "org:").',
+          description: 'Logical project or workspace namespace (defaults to MEMOREAL_NAMESPACE or "default"; never prefix with "org:").',
         },
         salience: {
           type: 'number',
@@ -88,7 +88,7 @@ export const MCP_TOOLS = Object.freeze([
     name: 'batch_encode',
     title: 'Batch Encode Memories',
     description:
-      'Store multiple memories atomically in one request (requires MEMORIA_API_KEY; consumes max(1, memories.length) Write API calls; non-idempotent) and return { ids, encoded }. Validates every item namespace before writing so any reserved "org:" prefix aborts the entire batch cleanly; items inherit top-level namespace (or MEMORIA_NAMESPACE) and default to type="episodic" and salience=0.5. Use when checkpointing or importing 2+ memories together; use encode_memory instead for a single memory write.',
+      'Store multiple memories atomically in one request (requires MEMOREAL_API_KEY; consumes max(1, memories.length) Write API calls; non-idempotent) and return { ids, encoded }. Validates every item namespace before writing so any reserved "org:" prefix aborts the entire batch cleanly; items inherit top-level namespace (or MEMOREAL_NAMESPACE) and default to type="episodic" and salience=0.5. Use when checkpointing or importing 2+ memories together; use encode_memory instead for a single memory write.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -131,7 +131,7 @@ export const MCP_TOOLS = Object.freeze([
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Keywords or natural-language question to match against stored memories.' },
-        namespace: { type: 'string', description: 'Logical workspace namespace filter (defaults to MEMORIA_NAMESPACE or "default"; never prefix with "org:").' },
+        namespace: { type: 'string', description: 'Logical workspace namespace filter (defaults to MEMOREAL_NAMESPACE or "default"; never prefix with "org:").' },
         token_budget: {
           type: 'integer',
           default: 4096,
@@ -169,7 +169,7 @@ export const MCP_TOOLS = Object.freeze([
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Active task, feature, or session topic used to rank relevant facts and history.' },
-        namespace: { type: 'string', description: 'Logical workspace namespace (defaults to MEMORIA_NAMESPACE or "default"; never prefix with "org:").' },
+        namespace: { type: 'string', description: 'Logical workspace namespace (defaults to MEMOREAL_NAMESPACE or "default"; never prefix with "org:").' },
         token_budget: {
           type: 'integer',
           default: 4096,
@@ -215,7 +215,7 @@ export const MCP_TOOLS = Object.freeze([
     name: 'delete_by_context',
     title: 'Delete Memories by Context',
     description:
-      'Permanently bulk-delete all memories whose context array contains an exact [key, value] pair (destructive, idempotent; consumes 1 Write API call) and return { deleted_count }. Scopes deletion to namespace (defaulting to MEMORIA_NAMESPACE when omitted locally) and rejects reserved "org:" prefixes. Use to purge memories tied to a deleted file, PR, or feature tag; use forget_memory instead when deleting a single memory by UUID.',
+      'Permanently bulk-delete all memories whose context array contains an exact [key, value] pair (destructive, idempotent; consumes 1 Write API call) and return { deleted_count }. Scopes deletion to namespace (defaulting to MEMOREAL_NAMESPACE when omitted locally) and rejects reserved "org:" prefixes. Use to purge memories tied to a deleted file, PR, or feature tag; use forget_memory instead when deleting a single memory by UUID.',
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -276,9 +276,9 @@ export const MCP_TOOLS = Object.freeze([
   },
   {
     name: 'health',
-    title: 'Check Memoria Health',
+    title: 'Check Memoreal Health',
     description:
-      'Check Memoria Cloud service status, total organization memory count across all namespaces, and rolling 30-day API quota usage (read-only, idempotent; consumes 1 Read API call) and return { status, memory_count, used_calls_30d, api_call_limit }. Takes no parameters; api_call_limit is null on Unlimited plans. Use to verify connectivity and overall organization quota headroom; use stats instead when you need memory counts scoped to one specific project namespace.',
+      'Check Memoreal Cloud service status, total organization memory count across all namespaces, and rolling 30-day API quota usage (read-only, idempotent; consumes 1 Read API call) and return { status, memory_count, used_calls_30d, api_call_limit }. Takes no parameters; api_call_limit is null on Unlimited plans. Use to verify connectivity and overall organization quota headroom; use stats instead when you need memory counts scoped to one specific project namespace.',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -323,13 +323,13 @@ export const MCP_TOOLS = Object.freeze([
     name: 'search_code',
     title: 'Search Indexed Code',
     description:
-      'Search indexed code symbol definitions, file paths, and reference memories within a namespace (read-only, idempotent; consumes 1 Read API call) and return { results, total_candidates } capped at 20 ranked { memory, score } hits. Requires code memories in namespace (populated via /memoria-sync-code or encode_memory) and rejects reserved "org:" prefixes. Use to discover where functions, classes, or routes live by keyword; use explain_code instead to inspect callers and invariants of a known symbol, or recall_memories for general prose rules.',
+      'Search indexed code symbol definitions, file paths, and reference memories within a namespace (read-only, idempotent; consumes 1 Read API call) and return { results, total_candidates } capped at 20 ranked { memory, score } hits. Requires code memories in namespace (populated via /memoreal-sync-code or encode_memory) and rejects reserved "org:" prefixes. Use to discover where functions, classes, or routes live by keyword; use explain_code instead to inspect callers and invariants of a known symbol, or recall_memories for general prose rules.',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Function, class, route, or file keyword to locate.' },
-        namespace: { type: 'string', description: 'Logical repository or workspace namespace (defaults to MEMORIA_NAMESPACE or "default").' },
+        namespace: { type: 'string', description: 'Logical repository or workspace namespace (defaults to MEMOREAL_NAMESPACE or "default").' },
         type: {
           type: 'string',
           default: 'any',
@@ -359,7 +359,7 @@ export const MCP_TOOLS = Object.freeze([
       properties: {
         target: { type: 'string', description: 'Exact function, class, or module identifier to explain (provide target or symbol).' },
         symbol: { type: 'string', description: 'Equivalent alias for target identifier (provide target or symbol).' },
-        namespace: { type: 'string', description: 'Logical repository or workspace namespace (defaults to MEMORIA_NAMESPACE or "default").' },
+        namespace: { type: 'string', description: 'Logical repository or workspace namespace (defaults to MEMOREAL_NAMESPACE or "default").' },
         depth: {
           type: 'string',
           enum: ['shallow', 'standard', 'deep'],
@@ -458,19 +458,19 @@ export const MCP_TOOLS = Object.freeze([
 export const MCP_RESOURCES = Object.freeze([
   {
     uri: 'memory://rules',
-    name: 'Memoria Core & High-Salience Rules',
+    name: 'Memoreal Core & High-Salience Rules',
     description: 'Active Core and high-salience Semantic rules, corrections, and invariants.',
     mimeType: 'application/json',
   },
   {
     uri: 'memory://recent',
-    name: 'Memoria Recent Memories',
+    name: 'Memoreal Recent Memories',
     description: 'Most recently encoded episodic and semantic memories across active sessions.',
     mimeType: 'application/json',
   },
   {
     uri: 'memory://stats',
-    name: 'Memoria Store & Graph Statistics',
+    name: 'Memoreal Store & Graph Statistics',
     description: 'Global and per-namespace counts, tier distribution, and graph edge metrics.',
     mimeType: 'application/json',
   },
@@ -478,7 +478,7 @@ export const MCP_RESOURCES = Object.freeze([
 
 export const MCP_PROMPTS = Object.freeze([
   {
-    name: 'memoria-session-start',
+    name: 'memoreal-session-start',
     description: 'Load token-budgeted project context and check engine health at the start of an AI coding session.',
     arguments: [
       {
@@ -489,8 +489,8 @@ export const MCP_PROMPTS = Object.freeze([
     ],
   },
   {
-    name: 'memoria-wrap-up',
-    description: 'Apply the Memoria write gate, encode session learnings, and consolidate duplicate memories.',
+    name: 'memoreal-wrap-up',
+    description: 'Apply the Memoreal write gate, encode session learnings, and consolidate duplicate memories.',
     arguments: [
       {
         name: 'namespace',
@@ -500,7 +500,7 @@ export const MCP_PROMPTS = Object.freeze([
     ],
   },
   {
-    name: 'memoria-handoff',
+    name: 'memoreal-handoff',
     description: 'Prepare a structured context handoff between specialist agent wings (architect, reviewer, qa, security, ops).',
     arguments: [
       { name: 'from_wing', description: 'Source agent wing.', required: true },

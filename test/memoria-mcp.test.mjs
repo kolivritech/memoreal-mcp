@@ -79,7 +79,7 @@ function createStdioMcpClient(envOverrides = {}, executablePath = SERVER_PATH, u
   return { request, close };
 }
 
-describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
+describe('@kolivri/memoreal-mcp stdio Cloud Connector suite', () => {
   let mockCloudServer;
   let mockCloudUrl;
   let receivedHeaders = [];
@@ -130,7 +130,7 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
   });
 
   it('initializes over JSON-RPC 2.0 and lists all 14 tools, 3 resources, and 3 prompts', async () => {
-    const client = createStdioMcpClient({ MEMORIA_API_KEY: '' });
+    const client = createStdioMcpClient({ MEMOREAL_API_KEY: '', MEMORIA_API_KEY: '' });
     try {
       const initRes = await client.request('initialize', {
         protocolVersion: '2024-11-05',
@@ -138,8 +138,8 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
         capabilities: {},
       });
       assert.equal(initRes.jsonrpc, '2.0');
-      assert.equal(initRes.result.serverInfo.name, '@kolivri/memoria-mcp');
-      assert.ok(initRes.result.instructions?.includes('Memoria Cloud'), 'initialize returns server instructions');
+      assert.equal(initRes.result.serverInfo.name, '@kolivri/memoreal-mcp');
+      assert.ok(initRes.result.instructions?.includes('Memoreal Cloud'), 'initialize returns server instructions');
 
       const toolsRes = await client.request('tools/list', {});
       assert.equal(toolsRes.result.tools.length, MCP_TOOLS.length);
@@ -187,31 +187,31 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
     }
   });
 
-  it('requires MEMORIA_API_KEY when calling any Memoria Cloud tool or reading a resource', async () => {
-    const client = createStdioMcpClient({ MEMORIA_API_KEY: '' });
+  it('requires MEMOREAL_API_KEY when calling any Memoreal Cloud tool or reading a resource', async () => {
+    const client = createStdioMcpClient({ MEMOREAL_API_KEY: '', MEMORIA_API_KEY: '' });
     try {
       const callRes = await client.request('tools/call', {
         name: 'encode_memory',
         arguments: { content: 'Should fail without API key' },
       });
       assert.equal(callRes.result.isError, true);
-      assert.match(callRes.result.content[0].text, /Missing Memoria API key: set MEMORIA_API_KEY/);
+      assert.match(callRes.result.content[0].text, /Missing Memoreal API key: set MEMOREAL_API_KEY/);
 
       const resRead = await client.request('resources/read', {
         uri: 'memory://stats',
       });
       assert.ok(resRead.error, 'resources/read without API key returns JSON-RPC error');
-      assert.match(resRead.error.message, /Missing Memoria API key: set MEMORIA_API_KEY/);
+      assert.match(resRead.error.message, /Missing Memoreal API key: set MEMOREAL_API_KEY/);
     } finally {
       await client.close();
     }
   });
 
-  it('forwards authenticated tool and resource calls over HTTP Bearer to MEMORIA_API_URL/v1/mcp', async () => {
+  it('forwards authenticated tool and resource calls over HTTP Bearer to MEMOREAL_API_URL/v1/mcp', async () => {
     const client = createStdioMcpClient({
-      MEMORIA_API_KEY: 'mem_dev_test_key_123',
-      MEMORIA_API_URL: mockCloudUrl,
-      MEMORIA_NAMESPACE: 'proj-ns',
+      MEMOREAL_API_KEY: 'mem_dev_test_key_123',
+      MEMOREAL_API_URL: mockCloudUrl,
+      MEMOREAL_NAMESPACE: 'proj-ns',
     });
     try {
       const callRes = await client.request('tools/call', {
@@ -232,29 +232,114 @@ describe('@kolivri/memoria-mcp stdio Cloud Connector suite', () => {
 
       const explainBySymbol = await client.request('tools/call', {
         name: 'explain_code',
-        arguments: { target: '', symbol: 'createMemoriaMcpService' },
+        arguments: { target: '', symbol: 'createMemorealMcpService' },
       });
       assert.equal(explainBySymbol.result.isError, false);
-      assert.equal(explainBySymbol.result.structuredContent.arguments.symbol, 'createMemoriaMcpService');
-      assert.equal(explainBySymbol.result.structuredContent.arguments.target, 'createMemoriaMcpService');
+      assert.equal(explainBySymbol.result.structuredContent.arguments.symbol, 'createMemorealMcpService');
+      assert.equal(explainBySymbol.result.structuredContent.arguments.target, 'createMemorealMcpService');
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('resolves both memoreal-* and legacy memoria-* prompts', async () => {
+    const client = createStdioMcpClient({
+      MEMOREAL_API_KEY: 'test-key',
+      MEMOREAL_API_URL: mockCloudUrl,
+    });
+    try {
+      const p1 = await client.request('prompts/get', { name: 'memoreal-session-start', arguments: { namespace: 'ns-test' } });
+      assert.ok(p1.result.description.includes('Memoreal Cloud'));
+      assert.ok(p1.result.messages[0].content.text.includes('build_context'));
+
+      const p1Legacy = await client.request('prompts/get', { name: 'memoria-session-start', arguments: { namespace: 'ns-test' } });
+      assert.ok(p1Legacy.result.description.includes('Memoreal Cloud'));
+      assert.ok(p1Legacy.result.messages[0].content.text.includes('build_context'));
+
+      const p2 = await client.request('prompts/get', { name: 'memoreal-wrap-up', arguments: { namespace: 'ns-test' } });
+      assert.ok(p2.result.description.includes('consolidate'));
+
+      const p2Legacy = await client.request('prompts/get', { name: 'memoria-wrap-up', arguments: { namespace: 'ns-test' } });
+      assert.ok(p2Legacy.result.description.includes('consolidate'));
+
+      const p3 = await client.request('prompts/get', { name: 'memoreal-handoff', arguments: { from_wing: 'architect', to_wing: 'qa' } });
+      assert.ok(p3.result.description.includes('Hand off context'));
+
+      const p3Legacy = await client.request('prompts/get', { name: 'memoria-handoff', arguments: { from_wing: 'architect', to_wing: 'qa' } });
+      assert.ok(p3Legacy.result.description.includes('Hand off context'));
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('supports legacy MEMORIA_API_KEY environment variable fallback', async () => {
+    const client = createStdioMcpClient({
+      MEMOREAL_API_KEY: '',
+      MEMORIA_API_KEY: 'legacy_memoria_key_456',
+      MEMORIA_API_URL: mockCloudUrl,
+      MEMORIA_NAMESPACE: 'legacy-ns',
+    });
+    try {
+      const callRes = await client.request('tools/call', {
+        name: 'encode_memory',
+        arguments: { content: 'Legacy env key test', type: 'semantic' },
+      });
+      assert.equal(callRes.result.isError, false);
+      assert.equal(callRes.result.structuredContent.ok, true);
+      assert.equal(callRes.result.structuredContent.arguments.namespace, 'legacy-ns');
+      const authHeader = receivedHeaders[receivedHeaders.length - 1].authorization;
+      assert.equal(authHeader, 'Bearer legacy_memoria_key_456');
     } finally {
       await client.close();
     }
   });
 
   it('starts stdio server when executed through an npm/npx bin symlink', async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'memoria-mcp-bin-'));
-    const binPath = path.join(tmpDir, 'memoria-mcp');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'memoreal-mcp-bin-'));
+    const binPath = path.join(tmpDir, 'memoreal-mcp');
     fs.symlinkSync(SERVER_PATH, binPath);
     const pkg = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8'));
-    const client = createStdioMcpClient({ MEMORIA_API_KEY: '' }, binPath, true, tmpDir);
+    const client = createStdioMcpClient({ MEMOREAL_API_KEY: '', MEMORIA_API_KEY: '' }, binPath, true, tmpDir);
     try {
       const initRes = await client.request('initialize', {
         protocolVersion: '2024-11-05',
         clientInfo: { name: 'npx-symlink-test', version: '1.0.0' },
         capabilities: {},
       });
-      assert.equal(initRes.result.serverInfo.name, '@kolivri/memoria-mcp');
+      assert.equal(initRes.result.serverInfo.name, '@kolivri/memoreal-mcp');
+      assert.equal(initRes.result.serverInfo.version, pkg.version);
+
+      const toolsRes = await client.request('tools/list', {});
+      assert.equal(toolsRes.result.tools.length, MCP_TOOLS.length);
+    } finally {
+      await client.close();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('exports createMemoriaMcpService as a functional alias for createMemorealMcpService', async () => {
+    const { createMemorealMcpService, createMemoriaMcpService } = await import('../src/server.mjs');
+    assert.equal(typeof createMemorealMcpService, 'function');
+    assert.equal(createMemoriaMcpService, createMemorealMcpService);
+
+    const s1 = createMemoriaMcpService({ apiKey: 'alias_key', apiUrl: mockCloudUrl });
+    assert.equal(typeof s1.callTool, 'function');
+    assert.equal(typeof s1.getPrompt, 'function');
+  });
+
+  it('starts stdio server when executed through legacy memoria-mcp bin symlink', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'memoria-mcp-legacy-bin-'));
+    const binPath = path.join(tmpDir, 'memoria-mcp');
+    fs.symlinkSync(SERVER_PATH, binPath);
+    const pkg = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8'));
+    const client = createStdioMcpClient({ MEMOREAL_API_KEY: '', MEMORIA_API_KEY: '' }, binPath, true, tmpDir);
+    try {
+      const initRes = await client.request('initialize', {
+        protocolVersion: '2024-11-05',
+        clientInfo: { name: 'legacy-bin-test', version: '1.0.0' },
+        capabilities: {},
+      });
+      assert.equal(initRes.result.serverInfo.name, '@kolivri/memoreal-mcp');
       assert.equal(initRes.result.serverInfo.version, pkg.version);
 
       const toolsRes = await client.request('tools/list', {});

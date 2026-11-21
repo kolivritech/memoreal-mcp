@@ -22,22 +22,38 @@ const PACKAGE_VERSION = (() => {
   return '1.0.1';
 })();
 
-export function createMemoriaMcpService(options = {}) {
+export function createMemorealMcpService(options = {}) {
   const apiUrl = (
     options.apiUrl ||
+    process.env.MEMOREAL_API_URL ||
     process.env.MEMORIA_API_URL ||
     'https://memoria.kolivri.com'
   ).replace(/\/+$/, '');
-  const defaultApiKey = (options.apiKey ?? process.env.MEMORIA_API_KEY ?? '').trim();
-  const defaultNamespace = (options.namespace ?? process.env.MEMORIA_NAMESPACE ?? 'default').trim() || 'default';
+  const defaultApiKey = (
+    options.apiKey ||
+    process.env.MEMOREAL_API_KEY ||
+    process.env.MEMORIA_API_KEY ||
+    ''
+  ).trim();
+  const defaultNamespace = (
+    options.namespace ??
+    process.env.MEMOREAL_NAMESPACE ??
+    process.env.MEMORIA_NAMESPACE ??
+    'default'
+  ).trim() || 'default';
   const fetchImpl = options.fetchImpl || globalThis.fetch;
-  const requestTimeoutMs = Number(options.requestTimeoutMs ?? process.env.MEMORIA_TIMEOUT_MS ?? 15_000);
+  const requestTimeoutMs = Number(
+    options.requestTimeoutMs ??
+    process.env.MEMOREAL_TIMEOUT_MS ??
+    process.env.MEMORIA_TIMEOUT_MS ??
+    15_000
+  );
 
   function requireApiKey(overrideKey) {
     const key = (overrideKey || defaultApiKey || '').trim();
     if (!key) {
       throw new Error(
-        'Missing Memoria API key: set MEMORIA_API_KEY in environment (get your key at https://memoria.kolivri.com/register).'
+        'Missing Memoreal API key: set MEMOREAL_API_KEY in environment (get your key at https://memoreal.kolivri.com/register).'
       );
     }
     return key;
@@ -75,12 +91,12 @@ export function createMemoriaMcpService(options = {}) {
 
     if (!response.ok) {
       throw new Error(
-        `Memoria Cloud API error (${response.status}): ${payload?.error?.message || payload?.error || payload?.message || responseText || 'Request failed'}`
+        `Memoreal Cloud API error (${response.status}): ${payload?.error?.message || payload?.error || payload?.message || responseText || 'Request failed'}`
       );
     }
 
     if (payload?.error) {
-      throw new Error(payload.error.message || 'Memoria Cloud RPC error');
+      throw new Error(payload.error.message || 'Memoreal Cloud RPC error');
     }
 
     return payload?.result ?? payload;
@@ -146,9 +162,9 @@ export function createMemoriaMcpService(options = {}) {
 
   function getPrompt(name, promptArgs = {}) {
     const ns = promptArgs.namespace || defaultNamespace;
-    if (name === 'memoria-session-start') {
+    if (name === 'memoreal-session-start' || name === 'memoria-session-start') {
       return {
-        description: 'Load session context and check Memoria Cloud health.',
+        description: 'Load session context and check Memoreal Cloud health.',
         messages: [
           {
             role: 'user',
@@ -161,7 +177,7 @@ export function createMemoriaMcpService(options = {}) {
       };
     }
 
-    if (name === 'memoria-wrap-up') {
+    if (name === 'memoreal-wrap-up' || name === 'memoria-wrap-up') {
       return {
         description: 'Encode key session learnings and consolidate duplicate memories.',
         messages: [
@@ -169,14 +185,14 @@ export function createMemoriaMcpService(options = {}) {
             role: 'user',
             content: {
               type: 'text',
-              text: `Review the session using the Memoria write gate, encode any lasting lessons or decisions via encode_memory in namespace "${ns}", and then run consolidate on "${ns}".`,
+              text: `Review the session using the Memoreal write gate, encode any lasting lessons or decisions via encode_memory in namespace "${ns}", and then run consolidate on "${ns}".`,
             },
           },
         ],
       };
     }
 
-    if (name === 'memoria-handoff') {
+    if (name === 'memoreal-handoff' || name === 'memoria-handoff') {
       const fromWing = promptArgs.from_wing || 'architect';
       const toWing = promptArgs.to_wing || 'qa';
       const task = promptArgs.task || 'Verify implementation';
@@ -232,7 +248,7 @@ export function createMemoriaMcpService(options = {}) {
               prompts: { listChanged: false },
             },
             serverInfo: {
-              name: '@kolivri/memoria-mcp',
+              name: '@kolivri/memoreal-mcp',
               version: PACKAGE_VERSION,
             },
             instructions: MCP_SERVER_INSTRUCTIONS,
@@ -402,12 +418,14 @@ export function createMemoriaMcpService(options = {}) {
   };
 }
 
+export const createMemoriaMcpService = createMemorealMcpService;
+
 export function startMcpStdioServer({
   input = process.stdin,
   output = process.stdout,
   serviceOptions = {},
 } = {}) {
-  const service = createMemoriaMcpService(serviceOptions);
+  const service = createMemorealMcpService(serviceOptions);
   const rl = readline.createInterface({
     input,
     crlfDelay: Infinity,

@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.kolivritech/memoria-mcp",
-  "title": "Memoria — Deterministic AI Memory & Code Intelligence MCP",
-  "description": "Official Node.js MCP connector for Memoria Cloud (https://memoria.kolivri.com).",
+  "name": "io.github.kolivritech/memoreal-mcp",
+  "title": "Memoreal — Deterministic AI Memory & Code Intelligence MCP",
+  "description": "Official Node.js MCP connector for Memoreal Cloud (https://memoreal.kolivri.com).",
   "version": "1.0.2",
-  "websiteUrl": "https://memoria.kolivri.com",
+  "websiteUrl": "https://memoreal.kolivri.com",
   "repository": {
-    "url": "https://github.com/kolivritech/memoria-mcp",
+    "url": "https://github.com/kolivritech/memoreal-mcp",
     "source": "github"
   },
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
-      "identifier": "@kolivri/memoria-mcp",
+      "identifier": "@kolivri/memoreal-mcp",
       "version": "1.0.2",
       "runtimeHint": "npx",
       "transport": {
@@ -21,10 +21,22 @@
       },
       "environmentVariables": [
         {
-          "name": "MEMORIA_API_KEY",
-          "description": "Memoria Cloud API key from https://memoria.kolivri.com/register",
+          "name": "MEMOREAL_API_KEY",
+          "description": "Memoreal Cloud API key from https://memoreal.kolivri.com/register",
           "isRequired": true,
           "isSecret": true
+        },
+        {
+          "name": "MEMOREAL_NAMESPACE",
+          "description": "Default workspace or project namespace",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "MEMOREAL_API_URL",
+          "description": "Memoreal Cloud API base URL",
+          "isRequired": false,
+          "isSecret": false
         }
       ]
     }
@@ -32,7 +44,7 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://memoria.kolivri.com/v1/mcp"
+      "url": "https://memoreal.kolivri.com/v1/mcp"
     }
   ]
 }

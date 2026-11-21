@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createMemoriaMcpService, startMcpStdioServer } from './server.mjs';
+import { createMemorealMcpService, startMcpStdioServer } from './server.mjs';
 import { MEMORY_TYPES } from './schemas.mjs';
 
 export const VALID_ACTIONS = Object.freeze([
@@ -16,9 +16,9 @@ export const VALID_ACTIONS = Object.freeze([
 
 export function normalizeInput(rawInput = {}) {
   const input = rawInput && typeof rawInput === 'object' ? rawInput : {};
-  const apiKey = (input.apiKey ?? process.env.MEMORIA_API_KEY ?? '').trim();
-  const apiUrl = (input.apiUrl ?? process.env.MEMORIA_API_URL ?? 'https://memoria.kolivri.com').trim();
-  const namespace = (input.namespace ?? process.env.MEMORIA_NAMESPACE ?? 'default').trim() || 'default';
+  const apiKey = (input.apiKey || process.env.MEMOREAL_API_KEY || process.env.MEMORIA_API_KEY || '').trim();
+  const apiUrl = (input.apiUrl || process.env.MEMOREAL_API_URL || process.env.MEMORIA_API_URL || 'https://memoria.kolivri.com').trim();
+  const namespace = (input.namespace || process.env.MEMOREAL_NAMESPACE || process.env.MEMORIA_NAMESPACE || 'default').trim() || 'default';
   const action = (input.action ?? 'context').trim();
   const query = typeof input.query === 'string' ? input.query.trim() : '';
   const content = typeof input.content === 'string' ? input.content.trim() : '';
@@ -154,7 +154,7 @@ export async function readApifyInput(explicitInput = null) {
   return {};
 }
 
-export async function executeMemoriaActorAction(rawInput = {}, options = {}) {
+export async function executeMemorealActorAction(rawInput = {}, options = {}) {
   const normalized = normalizeInput(rawInput);
   const { action, apiKey, apiUrl, namespace, query, content, type, salience, tokenBudget } = normalized;
 
@@ -184,7 +184,7 @@ export async function executeMemoriaActorAction(rawInput = {}, options = {}) {
     };
   }
 
-  const service = createMemoriaMcpService({
+  const service = createMemorealMcpService({
     apiKey,
     apiUrl,
     namespace,
@@ -243,6 +243,8 @@ export async function executeMemoriaActorAction(rawInput = {}, options = {}) {
   };
 }
 
+export const executeMemoriaActorAction = executeMemorealActorAction;
+
 export async function outputApifyResult(result) {
   // 1. Try Actor.setValue from 'apify' if available
   let actorValueSaved = false;
@@ -277,7 +279,7 @@ export async function outputApifyResult(result) {
 export async function main(options = {}) {
   const input = await readApifyInput(options.input);
   try {
-    const result = await executeMemoriaActorAction(input, options);
+    const result = await executeMemorealActorAction(input, options);
 
     if (result.action === 'standby_mcp') {
       return result;

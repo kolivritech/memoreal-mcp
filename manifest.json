@@ -1,11 +1,11 @@
 {
   "manifest_version": "0.1",
-  "name": "@kolivri/memoria-mcp",
-  "version": "1.0.1",
-  "description": "Official Node.js MCP connector for Memoria Cloud (https://memoria.kolivri.com).",
+  "name": "memoreal-mcp",
+  "version": "1.0.2",
+  "description": "Official Node.js MCP connector for Memoreal Cloud (https://memoreal.kolivri.com).",
   "author": {
     "name": "Kolivri",
-    "url": "https://memoria.kolivri.com"
+    "url": "https://memoreal.kolivri.com"
   },
   "server": {
     "type": "node",
