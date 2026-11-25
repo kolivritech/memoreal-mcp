@@ -129,7 +129,7 @@ describe('@kolivri/memoreal-mcp stdio Cloud Connector suite', () => {
     }
   });
 
-  it('initializes over JSON-RPC 2.0 and lists all 14 tools, 3 resources, and 3 prompts', async () => {
+  it('initializes over JSON-RPC 2.0 and lists all 15 tools, 3 resources, and 3 prompts', async () => {
     const client = createStdioMcpClient({ MEMOREAL_API_KEY: '', MEMORIA_API_KEY: '' });
     try {
       const initRes = await client.request('initialize', {
@@ -142,6 +142,8 @@ describe('@kolivri/memoreal-mcp stdio Cloud Connector suite', () => {
       assert.ok(initRes.result.instructions?.includes('Memoreal Cloud'), 'initialize returns server instructions');
 
       const toolsRes = await client.request('tools/list', {});
+      assert.equal(MCP_TOOLS.length, 15, 'MCP_TOOLS defines exactly 15 tools');
+      assert.equal(toolsRes.result.tools.length, 15);
       assert.equal(toolsRes.result.tools.length, MCP_TOOLS.length);
       assert.ok(
         toolsRes.result.tools.every((t) => t.annotations && typeof t.annotations.readOnlyHint === 'boolean'),
@@ -149,12 +151,27 @@ describe('@kolivri/memoreal-mcp stdio Cloud Connector suite', () => {
       );
       assert.ok(
         toolsRes.result.tools.every((t) => t.outputSchema && t.outputSchema.type === 'object' && /Use (when|at|to|after|before)/i.test(t.description)),
-        'all 14 tools publish outputSchema and explicit usage/disambiguation guidance for Glama TDQS 4.5+'
+        'all 15 tools publish outputSchema and explicit usage/disambiguation guidance for Glama TDQS 4.5+'
       );
       const feedbackTool = toolsRes.result.tools.find((t) => t.name === 'feedback');
       assert.equal(feedbackTool.annotations.idempotentHint, false, 'feedback is marked non-idempotent');
       const explainTool = toolsRes.result.tools.find((t) => t.name === 'explain_code');
       assert.deepEqual(explainTool.inputSchema.required, [], 'explain_code allows either symbol or target');
+      const connectTool = toolsRes.result.tools.find((t) => t.name === 'connect_account');
+      assert.ok(connectTool, 'connect_account tool is present');
+      assert.equal(connectTool.title, 'Connect Memoreal Account');
+      assert.deepEqual(connectTool.annotations, {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      });
+      assert.deepEqual(connectTool.inputSchema.required, [], 'connect_account inputSchema.required is empty');
+      assert.equal(connectTool.outputSchema.type, 'object', 'connect_account outputSchema is object');
+      assert.ok(
+        /Use (when|at|to|after|before)/i.test(connectTool.description),
+        'connect_account description matches Glama TDQS disambiguation regex'
+      );
 
       const initBadProto = await client.request('initialize', {
         protocolVersion: { malformed: true },

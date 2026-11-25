@@ -1,6 +1,9 @@
 import {
   deriveNamespace,
   resolveCloudConfig,
+  isPlaceholderApiKey,
+  ONBOARDING_WIZARD_PROMPT,
+  fetchSessionStartContext,
   buildReadSuffix,
   buildWriteSuffix,
   buildEditSuffix,
@@ -11,6 +14,9 @@ import {
 export {
   deriveNamespace,
   resolveCloudConfig,
+  isPlaceholderApiKey,
+  ONBOARDING_WIZARD_PROMPT,
+  fetchSessionStartContext,
   buildReadSuffix,
   buildWriteSuffix,
   buildEditSuffix,

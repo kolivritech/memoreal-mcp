@@ -3,6 +3,41 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 
+export const ONBOARDING_WIZARD_PROMPT =
+  'Polite Onboarding Action: Invite the user in chat to connect their free Memoreal account (1,000 free API calls & memories) in 1 click by calling the connect_account tool (opens Chrome OAuth automatically, zero copy-paste), or share https://memoreal.kolivri.com/connect (terminal wizard: npx -y @kolivri/memoreal-mcp setup). Never ask the user to paste their raw API key into chat.\n\n' +
+  'Drive the 3-Click Interactive In-Chat Wizard using AskUserQuestion (Claude Code) or question (OpenCode & Cursor):\n' +
+  '- Step 1: Present choice card "Connect in 1 Click via Google / Browser (Recommended)" vs "Skip for this session".\n' +
+  '- Step 2: Call connect_account({ action: "start" }) and present clickable https://memoreal.kolivri.com/connect?code=XXXX-YYYY link with "I clicked Authorize — Verify" card (calling connect_account({ action: "status" })).\n' +
+  '- Step 3: Once connected, present choice card "Yes — Index repo now (Recommended)" vs "Later".'
+
+export function isPlaceholderApiKey(raw) {
+  if (typeof raw !== "string") return true
+  let str = raw.trim()
+  while ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+    str = str.slice(1, -1).trim()
+  }
+  if (!str) return true
+  if (str.includes("...")) return true
+  if (str.startsWith("<") && str.endsWith(">")) return true
+  if (str.startsWith("${") && str.endsWith("}")) return true
+  const lower = str.toLowerCase()
+  if (
+    lower === "mem_dev_your_key_here" ||
+    lower === "your_api_key" ||
+    lower === "your-api-key" ||
+    lower === "your-memoreal-api-key" ||
+    lower === "your_memoreal_api_key" ||
+    lower === "placeholder" ||
+    lower.includes("your_key_here") ||
+    lower.includes("your_api_key") ||
+    lower.includes("your-api-key") ||
+    lower.includes("your-memoreal-api-key")
+  ) {
+    return true
+  }
+  return false
+}
+
 const CORRECTION_PATTERNS = [
   "don't",
   "do not",
@@ -42,31 +77,43 @@ function gitOutput(cwd, args) {
   }
 }
 
-export function resolveCloudConfig(homeDir = process.env.HOME || homedir()) {
+export function resolveCloudConfig(homeDir = process.env.MEMOREAL_HOME || process.env.HOME || homedir()) {
+  const isExplicitHomePassed = arguments.length > 0 && homeDir !== undefined
+  const resolvedHome = homeDir || process.env.MEMOREAL_HOME || process.env.HOME || homedir()
+
+  const isExplicitEmptyAmbientKey =
+    !isExplicitHomePassed &&
+    !process.env.MEMOREAL_HOME &&
+    "MEMOREAL_API_KEY" in process.env &&
+    process.env.MEMOREAL_API_KEY === ""
+
   const fileVars = {}
-  for (const dirName of [".memoreal", ".memoria"]) {
-    try {
-      const raw = readFileSync(join(homeDir, dirName, "config.env"), "utf8")
-      for (const line of raw.split(/\r?\n/)) {
-        const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
-        if (!m) continue
-        const val = m[2].replace(/^["']|["']$/g, "")
-        if (!(m[1] in fileVars)) {
-          fileVars[m[1]] = val
+  if (!isExplicitEmptyAmbientKey) {
+    for (const dirName of [".memoreal", ".memoria"]) {
+      try {
+        const raw = readFileSync(join(resolvedHome, dirName, "config.env"), "utf8")
+        for (const line of raw.split(/\r?\n/)) {
+          const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
+          if (!m) continue
+          let val = m[2].trim()
+          while ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1).trim()
+          }
+          if (!(m[1] in fileVars)) {
+            fileVars[m[1]] = val
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
   }
 
   const rawUrl =
     process.env.MEMOREAL_API_URL ||
     process.env.MEMORIA_API_URL ||
-    fileVars.MEMOREAL_API_URL ||
-    fileVars.MEMORIA_API_URL ||
+    (!isExplicitEmptyAmbientKey ? (fileVars.MEMOREAL_API_URL || fileVars.MEMORIA_API_URL) : "") ||
     process.env.MEMOREAL_URL ||
     process.env.MEMORIA_URL ||
-    fileVars.MEMOREAL_URL ||
-    fileVars.MEMORIA_URL ||
+    (!isExplicitEmptyAmbientKey ? (fileVars.MEMOREAL_URL || fileVars.MEMORIA_URL) : "") ||
     "https://memoria.kolivri.com"
   const candidateUrl = rawUrl.replace(/\/v1\/mcp\/?$/, "").replace(/\/+$/, "")
   const isSafeUrl =
@@ -74,22 +121,53 @@ export function resolveCloudConfig(homeDir = process.env.HOME || homedir()) {
     /^http:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?(\/[A-Za-z0-9._/-]*)?$/.test(candidateUrl)
   const apiUrl = isSafeUrl ? candidateUrl : "https://memoria.kolivri.com"
 
-  const rawKey =
-    process.env.MEMOREAL_API_KEY ||
-    process.env.MEMORIA_API_KEY ||
-    process.env.MEMOREAL_KEY ||
-    process.env.MEMORIA_KEY ||
-    fileVars.MEMOREAL_API_KEY ||
-    fileVars.MEMORIA_API_KEY ||
-    fileVars.MEMOREAL_KEY ||
-    fileVars.MEMORIA_KEY ||
-    ""
-  const apiKey = /^[A-Za-z0-9_.-]+$/.test(rawKey) ? rawKey : ""
+  const envCandidates = [
+    process.env.MEMOREAL_API_KEY,
+    process.env.MEMORIA_API_KEY,
+    process.env.MEMOREAL_KEY,
+    process.env.MEMORIA_KEY,
+  ]
+
+  let rawKey = ""
+  for (const candidate of envCandidates) {
+    if (candidate && !isPlaceholderApiKey(candidate)) {
+      rawKey = candidate
+      break
+    }
+  }
+
+  if (!rawKey && !isExplicitEmptyAmbientKey) {
+    const fileCandidates = [
+      fileVars.MEMOREAL_API_KEY,
+      fileVars.MEMORIA_API_KEY,
+      fileVars.MEMOREAL_KEY,
+      fileVars.MEMORIA_KEY,
+    ]
+    for (const candidate of fileCandidates) {
+      if (candidate && !isPlaceholderApiKey(candidate)) {
+        rawKey = candidate
+        break
+      }
+    }
+  }
+
+  let apiKey = rawKey.trim()
+  while ((apiKey.startsWith('"') && apiKey.endsWith('"')) || (apiKey.startsWith("'") && apiKey.endsWith("'"))) {
+    apiKey = apiKey.slice(1, -1).trim()
+  }
+  if (isPlaceholderApiKey(apiKey) || !/^[A-Za-z0-9_.-]+$/.test(apiKey)) {
+    apiKey = ""
+  }
 
   return { apiUrl, apiKey }
 }
 
-async function fetchSessionStartContext(cwd) {
+export async function fetchSessionStartContext(cwd, homeDir) {
+  const { apiUrl, apiKey } = resolveCloudConfig(homeDir)
+  if (!apiKey) {
+    return ONBOARDING_WIZARD_PROMPT
+  }
+
   const ns = deriveNamespace(cwd)
   const branch = gitOutput(cwd, ["branch", "--show-current"])
   const recent = gitOutput(cwd, ["log", "--oneline", "-3"]).replace(/\n+/g, "; ")
@@ -105,8 +183,7 @@ async function fetchSessionStartContext(cwd) {
     query += `, context for ${gitParts.join(", ")}`
   }
 
-  const { apiUrl, apiKey } = resolveCloudConfig()
-  const authHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+  const authHeaders = { Authorization: `Bearer ${apiKey}` }
 
   try {
     const healthRes = await fetch(`${apiUrl}/v1/health`, {
@@ -134,7 +211,8 @@ async function fetchSessionStartContext(cwd) {
   }
 }
 
-export function buildReadSuffix(file, ns) {
+export function buildReadSuffix(file, ns, homeDir) {
+  if (!resolveCloudConfig(homeDir).apiKey) return ""
   if (!file || SYSTEM_SKILL_PATH_REGEX.test(file)) return ""
   if (PLAN_PATH_REGEX.test(file) || /\.md$/i.test(file)) {
     return `\n\n[memoreal-recall-doc] Reading: ${file}\nRecall related memories from Memoreal (namespace: ${ns}) about this file: prior edits, progress updates, decisions, related plans, ideas, reflections, workflow patterns, consolidated patterns, and context from previous sessions. Show the user what Memoreal knows about this file before proceeding.`
@@ -142,7 +220,8 @@ export function buildReadSuffix(file, ns) {
   return ""
 }
 
-export function buildWriteSuffix(file, ns) {
+export function buildWriteSuffix(file, ns, homeDir) {
+  if (!resolveCloudConfig(homeDir).apiKey) return ""
   if (!file || SKIP_ENCODE_EXT.test(file)) return ""
   if (PLAN_PATH_REGEX.test(file)) {
     return `\n\n[memoreal-encode-plan] Plan file written: ${file}
@@ -172,7 +251,8 @@ Include the file path in context metadata.`
   return `\n\n[memoreal-encode-file] File written: ${file}. Apply write gate: only encode if this file contains a key definition, decision, or pattern worth remembering across sessions. Skip boilerplate. If encoding, use namespace ${ns}, type semantic, salience 0.5. Include file path in context.`
 }
 
-export function buildEditSuffix(file, ns) {
+export function buildEditSuffix(file, ns, homeDir) {
+  if (!resolveCloudConfig(homeDir).apiKey) return ""
   if (!file || SKIP_ENCODE_EXT.test(file)) return ""
   if (PLAN_PATH_REGEX.test(file)) {
     return `\n\n[memoreal-encode-plan] Plan file updated: ${file}
@@ -198,7 +278,8 @@ Include the file path in context metadata.`
   return `\n\n[memoreal-encode-file] File edited: ${file}. Apply write gate: only encode if this edit represents a meaningful decision, pattern, or lesson. Skip routine changes. If encoding, use namespace ${ns}, type semantic, salience 0.5. Include file path and what changed.`
 }
 
-function buildTodoSuffix(sessionID, todos, previousTodosBySession, ns) {
+function buildTodoSuffix(sessionID, todos, previousTodosBySession, ns, homeDir) {
+  if (!resolveCloudConfig(homeDir).apiKey) return ""
   const prev = previousTodosBySession.get(sessionID) || new Map()
   const list = Array.isArray(todos) ? todos : []
 
@@ -264,9 +345,12 @@ export const MemorealHooksPlugin = async ({ directory } = {}) => {
       const startCtx = sessionStartContextCache.get(sessionID)
       if (startCtx && Array.isArray(output?.system)) {
         output.system.push(startCtx)
+        if (startCtx === ONBOARDING_WIZARD_PROMPT) {
+          sessionStartContextCache.set(sessionID, "")
+        }
       }
 
-      if (pendingCorrectionBySession.get(sessionID) && Array.isArray(output?.system)) {
+      if (resolveCloudConfig().apiKey && pendingCorrectionBySession.get(sessionID) && Array.isArray(output?.system)) {
         output.system.push(
           `[memoreal-correction] The user appears to be correcting your approach. After addressing the correction, encode the lesson into Memoreal (namespace: ${ns}, type: semantic, salience: 0.9) as a rule: what was wrong, what the correct approach is, and why. This ensures the mistake is never repeated in future sessions.`
         )
@@ -274,6 +358,7 @@ export const MemorealHooksPlugin = async ({ directory } = {}) => {
     },
 
     "tool.execute.after": async (input, output) => {
+      if (!resolveCloudConfig().apiKey) return
       const tool = input?.tool
       const args = input?.args || {}
       const ns = deriveNamespace(directory)
@@ -304,6 +389,7 @@ export const MemorealHooksPlugin = async ({ directory } = {}) => {
     },
 
     "experimental.session.compacting": async (_input, output) => {
+      if (!resolveCloudConfig().apiKey) return
       const ns = deriveNamespace(directory)
       output.context.push(
         `[memoreal-pre-compact] Context is about to be compressed. Ensure the following are encoded into Memoreal (namespace: ${ns}) so nothing is lost:
@@ -317,6 +403,7 @@ export const MemorealHooksPlugin = async ({ directory } = {}) => {
 
     event: async ({ event }) => {
       if (event?.type === "session.idle") {
+        if (!resolveCloudConfig().apiKey) return
         const sessionID =
           event?.properties?.sessionID ||
           event?.properties?.info?.id ||
@@ -372,25 +459,31 @@ export const setup = async (ctx) => {
     const startCtx = sessionStartContextCache.get(sessionID)
     if (startCtx && Array.isArray(event?.system)) {
       event.system.push({ type: "text", text: startCtx })
+      if (startCtx === ONBOARDING_WIZARD_PROMPT) {
+        sessionStartContextCache.set(sessionID, "")
+      }
     }
 
-    const stopKey = `${sessionID}:stop`
-    const stopCtx = sessionStartContextCache.get(stopKey)
-    if (stopCtx && Array.isArray(event?.system)) {
-      event.system.push({ type: "text", text: stopCtx })
-      sessionStartContextCache.delete(stopKey)
-    }
+    if (resolveCloudConfig().apiKey) {
+      const stopKey = `${sessionID}:stop`
+      const stopCtx = sessionStartContextCache.get(stopKey)
+      if (stopCtx && Array.isArray(event?.system)) {
+        event.system.push({ type: "text", text: stopCtx })
+        sessionStartContextCache.delete(stopKey)
+      }
 
-    if (pendingCorrectionBySession.get(sessionID) && Array.isArray(event?.system)) {
-      event.system.push({
-        type: "text",
-        text: `[memoreal-correction] The user appears to be correcting your approach. After addressing the correction, encode the lesson into Memoreal (namespace: ${ns}, type: semantic, salience: 0.9) as a rule: what was wrong, what the correct approach is, and why. This ensures the mistake is never repeated in future sessions.`,
-      })
+      if (pendingCorrectionBySession.get(sessionID) && Array.isArray(event?.system)) {
+        event.system.push({
+          type: "text",
+          text: `[memoreal-correction] The user appears to be correcting your approach. After addressing the correction, encode the lesson into Memoreal (namespace: ${ns}, type: semantic, salience: 0.9) as a rule: what was wrong, what the correct approach is, and why. This ensures the mistake is never repeated in future sessions.`,
+        })
+      }
     }
   })
 
   await ctx.tool.hook("execute.after", (event) => {
     if (event.status !== "completed" || !event.result) return
+    if (!resolveCloudConfig().apiKey) return
     const tool = event.tool
     const args = event.input || {}
     const ns = deriveNamespace(directory)
@@ -420,6 +513,7 @@ export const setup = async (ctx) => {
   })
 
   await ctx.session.hook("compaction", (event) => {
+    if (!resolveCloudConfig().apiKey) return
     const ns = deriveNamespace(directory)
     if (Array.isArray(event?.system)) {
       event.system.push({
@@ -442,6 +536,7 @@ export const setup = async (ctx) => {
         signal: controller.signal,
       })) {
         if (event?.type === "session.execution.succeeded") {
+          if (!resolveCloudConfig().apiKey) continue
           const sessionID = event?.data?.sessionID || "default"
           const ns = deriveNamespace(directory)
           sessionStartContextCache.set(

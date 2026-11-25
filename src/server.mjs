@@ -9,6 +9,16 @@ import {
   MCP_SERVER_INSTRUCTIONS,
   MCP_TOOLS,
 } from './schemas.mjs';
+import {
+  POLITE_ONBOARDING_ACTION,
+  resolveEffectiveApiKey,
+  resolveEffectiveApiUrl,
+} from './config-store.mjs';
+import {
+  createConnectWizardController,
+  runCliSetupWizard,
+  sanitizeClientName,
+} from './wizard.mjs';
 
 const PACKAGE_VERSION = (() => {
   try {
@@ -23,37 +33,42 @@ const PACKAGE_VERSION = (() => {
 })();
 
 export function createMemorealMcpService(options = {}) {
-  const apiUrl = (
-    options.apiUrl ||
-    process.env.MEMOREAL_API_URL ||
-    process.env.MEMORIA_API_URL ||
-    'https://memoria.kolivri.com'
-  ).replace(/\/+$/, '');
-  const defaultApiKey = (
-    options.apiKey ||
-    process.env.MEMOREAL_API_KEY ||
-    process.env.MEMORIA_API_KEY ||
-    ''
-  ).trim();
+  let runtimePairedApiKey = '';
+  let connectedClientName = sanitizeClientName(options.clientName || '');
+  const env = options.env || process.env;
+
+  const getConfigOpts = () => ({
+    apiKey: options.apiKey,
+    apiUrl: options.apiUrl,
+    runtimePairedApiKey,
+    homeDir: options.homeDir,
+    configDir: options.configDir,
+    disableConfigFileFallback: options.disableConfigFileFallback,
+    env,
+  });
+
+  const getApiUrl = () => resolveEffectiveApiUrl('', getConfigOpts());
+
   const defaultNamespace = (
     options.namespace ??
-    process.env.MEMOREAL_NAMESPACE ??
-    process.env.MEMORIA_NAMESPACE ??
+    env.MEMOREAL_NAMESPACE ??
+    env.MEMORIA_NAMESPACE ??
     'default'
   ).trim() || 'default';
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const requestTimeoutMs = Number(
     options.requestTimeoutMs ??
-    process.env.MEMOREAL_TIMEOUT_MS ??
-    process.env.MEMORIA_TIMEOUT_MS ??
+    env.MEMOREAL_TIMEOUT_MS ??
+    env.MEMORIA_TIMEOUT_MS ??
     15_000
   );
 
   function requireApiKey(overrideKey) {
-    const key = (overrideKey || defaultApiKey || '').trim();
+    const key = resolveEffectiveApiKey(overrideKey, getConfigOpts());
     if (!key) {
       throw new Error(
-        'Missing Memoreal API key: set MEMOREAL_API_KEY in environment (get your key at https://memoreal.kolivri.com/register).'
+        'Missing Memoreal API key: set MEMOREAL_API_KEY in environment or connect in 1 click. ' +
+          POLITE_ONBOARDING_ACTION
       );
     }
     return key;
@@ -61,6 +76,7 @@ export function createMemorealMcpService(options = {}) {
 
   async function forwardCloudRpc(method, params, overrideKey) {
     const apiKey = requireApiKey(overrideKey);
+    const apiUrl = getApiUrl();
     const endpoint = apiUrl.endsWith('/v1/mcp') ? apiUrl : `${apiUrl}/v1/mcp`;
 
     const response = await fetchImpl(endpoint, {
@@ -90,9 +106,22 @@ export function createMemorealMcpService(options = {}) {
     }
 
     if (!response.ok) {
-      throw new Error(
-        `Memoreal Cloud API error (${response.status}): ${payload?.error?.message || payload?.error || payload?.message || responseText || 'Request failed'}`
-      );
+      const detail =
+        payload?.error?.message ||
+        payload?.error ||
+        payload?.message ||
+        responseText ||
+        'Request failed';
+      if (response.status === 401) {
+        if (!overrideKey && runtimePairedApiKey) runtimePairedApiKey = '';
+        throw new Error(
+          'Memoreal Cloud API error (401): ' +
+            detail +
+            '. Missing Memoreal API key: set MEMOREAL_API_KEY or reconnect. ' +
+            POLITE_ONBOARDING_ACTION
+        );
+      }
+      throw new Error(`Memoreal Cloud API error (${response.status}): ${detail}`);
     }
 
     if (payload?.error) {
@@ -102,9 +131,28 @@ export function createMemorealMcpService(options = {}) {
     return payload?.result ?? payload;
   }
 
+  const wizard = createConnectWizardController({
+    getApiUrl,
+    getExistingApiKey: () => resolveEffectiveApiKey('', getConfigOpts()),
+    getConnectedClientName: () => connectedClientName,
+    onApproved: ({ apiKey }) => {
+      runtimePairedApiKey = apiKey;
+    },
+    fetchImpl,
+    requestTimeoutMs,
+    homeDir: options.homeDir,
+    env,
+    spawnImpl: options.spawnImpl,
+    platform: options.platform,
+  });
+
   async function callTool(name, args = {}) {
     if (!MCP_TOOLS.some((t) => t.name === name)) {
       throw new Error(`Unknown tool: "${name}"`);
+    }
+
+    if (name === 'connect_account') {
+      return await wizard.handleConnectAccount(args);
     }
 
     const normalizedArgs = { ...args };
@@ -233,6 +281,12 @@ export function createMemorealMcpService(options = {}) {
 
     try {
       if (method === 'initialize') {
+        if (
+          typeof params?.clientInfo?.name === 'string' &&
+          params.clientInfo.name.trim()
+        ) {
+          connectedClientName = sanitizeClientName(params.clientInfo.name);
+        }
         const requestedProto =
           typeof params?.protocolVersion === 'string' && params.protocolVersion.trim()
             ? params.protocolVersion.trim()
@@ -415,6 +469,7 @@ export function createMemorealMcpService(options = {}) {
     readResource,
     getPrompt,
     handleJsonRpcMessage,
+    close: () => wizard.close(),
   };
 }
 
@@ -464,9 +519,20 @@ export function startMcpStdioServer({
     });
   });
 
+  rl.on('close', () => {
+    try {
+      service.close?.();
+    } catch {}
+  });
+
   return {
     service,
-    close: () => rl.close(),
+    close: () => {
+      try {
+        service.close?.();
+      } catch {}
+      rl.close();
+    },
   };
 }
 
@@ -481,5 +547,17 @@ const isDirectExecution = (() => {
 })();
 
 if (isDirectExecution) {
-  startMcpStdioServer();
+  const subCmd = (process.argv[2] || '').trim().toLowerCase();
+  if (subCmd === 'setup' || subCmd === 'login' || subCmd === 'init') {
+    runCliSetupWizard({ argv: process.argv.slice(2) })
+      .then((res) => {
+        if (!res?.ok) process.exitCode = 1;
+      })
+      .catch((err) => {
+        console.error(err.message || String(err));
+        process.exit(1);
+      });
+  } else {
+    startMcpStdioServer();
+  }
 }
