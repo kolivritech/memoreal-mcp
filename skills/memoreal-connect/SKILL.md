@@ -1,9 +1,11 @@
 ---
 name: memoreal-connect
-description: Connect this workspace to Memoreal Cloud via the 3-Click Interactive In-Chat Wizard.
+description: Connect this workspace to Memoreal Cloud via the 3-Click Interactive In-Chat Wizard (legacy alias: /memoria-connect).
 ---
 
 # /memoreal-connect — 3-Click Interactive In-Chat Wizard
+
+> **Note**: `/memoreal-connect` is the canonical command. `/memoria-connect` is supported as a backward-compatible alias.
 
 Authenticate and pair this IDE workspace with Memoreal Cloud (`https://memoreal.kolivri.com`) using RFC 8628 OAuth device pairing directly within chat.
 

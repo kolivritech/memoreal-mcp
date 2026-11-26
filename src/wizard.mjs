@@ -31,14 +31,29 @@ export function sanitizeClientName(rawName) {
     .slice(0, 80);
 }
 
+const WORKSPACE_SECRET_PATTERN =
+  /^(?:mem_(?:dev|live|start|biz|prod|test)_|sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+)/i;
+
 export function sanitizeWorkspaceMetadata(workspace) {
-  if (!workspace || typeof workspace !== 'object') {
+  if (!workspace) {
+    return undefined;
+  }
+
+  if (typeof workspace === 'string') {
+    const trimmed = workspace.trim();
+    if (!trimmed || WORKSPACE_SECRET_PATTERN.test(trimmed)) {
+      return undefined;
+    }
+    return trimmed;
+  }
+
+  if (typeof workspace !== 'object') {
     return undefined;
   }
 
   if (Array.isArray(workspace)) {
     return workspace
-      .filter((item) => typeof item !== 'string' || !/^mem_(dev|live|start|biz|prod|test)_/i.test(item))
+      .filter((item) => typeof item !== 'string' || !WORKSPACE_SECRET_PATTERN.test(item.trim()))
       .map((item) => (item && typeof item === 'object' ? sanitizeWorkspaceMetadata(item) : item));
   }
 
@@ -47,7 +62,7 @@ export function sanitizeWorkspaceMetadata(workspace) {
     if (/^(api_?key|raw_?key|secret|token|access_?token|authorization)$/i.test(key)) {
       continue;
     }
-    if (typeof value === 'string' && /^mem_(dev|live|start|biz|prod|test)_/i.test(value)) {
+    if (typeof value === 'string' && WORKSPACE_SECRET_PATTERN.test(value.trim())) {
       continue;
     }
     if (value && typeof value === 'object') {
@@ -104,6 +119,57 @@ export function openUrlInBrowser(url, options = {}) {
     return true;
   } catch {
     return false;
+  }
+}
+
+export async function verifyApiKeyAuth(apiUrl, key, options = {}) {
+  const fetchImpl = typeof options === 'function' ? options : (options?.fetchImpl || globalThis.fetch);
+  const requestTimeoutMs = options?.requestTimeoutMs || 15000;
+  const cleanKey = sanitizeApiKey(key);
+  if (!cleanKey) {
+    return { ok: false, status: 401, data: null };
+  }
+
+  const base = (apiUrl || '').trim().replace(/\/v1\/mcp\/?$/i, '').replace(/\/+$/, '');
+  const mcpUrl = `${base}/v1/mcp`;
+  const healthUrl = `${base}/v1/health`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
+  if (typeof timeoutId?.unref === 'function') timeoutId.unref();
+
+  try {
+    let mcpRes = null;
+    try {
+      mcpRes = await fetchImpl(mcpUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${cleanKey}`,
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
+        signal: options?.signal || controller.signal,
+      });
+    } catch (fetchErr) {
+      if (fetchErr?.name === 'AbortError') throw fetchErr;
+    }
+
+    if (mcpRes && mcpRes.status !== 404) {
+      const data = mcpRes.ok ? await mcpRes.json().catch(() => ({})) : null;
+      return { ok: mcpRes.ok, status: mcpRes.status, data };
+    }
+
+    const healthRes = await fetchImpl(healthUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${cleanKey}` },
+      signal: options?.signal || controller.signal,
+    });
+    const healthData = healthRes.ok ? await healthRes.json().catch(() => ({})) : null;
+    return { ok: healthRes.ok, status: healthRes.status, data: healthData };
+  } catch {
+    return { ok: false, status: 0, data: null };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -226,10 +292,8 @@ export function createConnectWizardController(options = {}) {
         const existingKey = resolveApiKey();
         if (existingKey) {
           try {
-            const healthRes = await fetchWithTimeout(`${apiUrl}/v1/health`, {
-              headers: { Authorization: `Bearer ${existingKey}` },
-            });
-            if (healthRes.ok) {
+            const authRes = await verifyApiKeyAuth(apiUrl, existingKey, { fetchImpl, requestTimeoutMs });
+            if (authRes.ok) {
               return {
                 status: 'connected',
                 message:
@@ -251,10 +315,8 @@ export function createConnectWizardController(options = {}) {
       const existingKey = resolveApiKey();
       if (existingKey) {
         try {
-          const healthRes = await fetchWithTimeout(`${apiUrl}/v1/health`, {
-            headers: { Authorization: `Bearer ${existingKey}` },
-          });
-          if (healthRes.ok) {
+          const authRes = await verifyApiKeyAuth(apiUrl, existingKey, { fetchImpl, requestTimeoutMs });
+          if (authRes.ok) {
             return {
               status: 'already_connected',
               api_url: apiUrl,
@@ -315,6 +377,9 @@ export function createConnectWizardController(options = {}) {
     }
 
     const scheduleNextPoll = () => {
+      if (state.status !== 'waiting_for_browser' || state.device_code !== deviceCode) {
+        return;
+      }
       if (activePollerTimer) {
         clearTimeout(activePollerTimer);
       }
@@ -328,7 +393,7 @@ export function createConnectWizardController(options = {}) {
     };
 
     const executePoll = async () => {
-      if (state.status !== 'waiting_for_browser') {
+      if (state.status !== 'waiting_for_browser' || state.device_code !== deviceCode) {
         return;
       }
       if (Date.now() >= state.expiresAtMs) {
@@ -336,17 +401,35 @@ export function createConnectWizardController(options = {}) {
         return;
       }
 
+      const controller = new AbortController();
+      activeAbortController = controller;
+      const pollSignal =
+        typeof AbortSignal.any === 'function'
+          ? AbortSignal.any([controller.signal, AbortSignal.timeout(requestTimeoutMs)])
+          : controller.signal;
+      const pollTimer =
+        typeof AbortSignal.any === 'function'
+          ? null
+          : setTimeout(() => controller.abort(), requestTimeoutMs);
+      pollTimer?.unref?.();
+
       try {
-        activeAbortController = new AbortController();
         const pollRes = await fetchImpl(`${apiUrl}/v1/auth/device/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ device_code: deviceCode }),
-          signal: activeAbortController.signal,
+          signal: pollSignal,
         });
+
+        if (state.status !== 'waiting_for_browser' || state.device_code !== deviceCode) {
+          return;
+        }
 
         if (!pollRes.ok) {
           const errData = await pollRes.json().catch(() => ({}));
+          if (state.status !== 'waiting_for_browser' || state.device_code !== deviceCode) {
+            return;
+          }
           const errCode = (errData.status || errData.error || '').toLowerCase();
           if (errCode === 'expired' || errCode === 'expired_token') {
             state.status = 'expired';
@@ -356,13 +439,17 @@ export function createConnectWizardController(options = {}) {
             state.status = 'denied';
             return;
           }
-          if (state.status === 'waiting_for_browser' && Date.now() < state.expiresAtMs) {
+          if (state.status === 'waiting_for_browser' && state.device_code === deviceCode && Date.now() < state.expiresAtMs) {
             scheduleNextPoll();
           }
           return;
         }
 
         const pollData = await pollRes.json();
+        if (state.status !== 'waiting_for_browser' || state.device_code !== deviceCode) {
+          return;
+        }
+
         const pollStatus = (pollData.status || '').toLowerCase();
 
         if (pollStatus === 'approved') {
@@ -396,16 +483,21 @@ export function createConnectWizardController(options = {}) {
           return;
         }
 
-        if (state.status === 'waiting_for_browser' && Date.now() < state.expiresAtMs) {
+        if (state.status === 'waiting_for_browser' && state.device_code === deviceCode && Date.now() < state.expiresAtMs) {
           scheduleNextPoll();
         }
       } catch (err) {
         if (err?.name === 'AbortError') return;
-        if (state.status === 'waiting_for_browser' && Date.now() < state.expiresAtMs) {
+        if (state.status === 'waiting_for_browser' && state.device_code === deviceCode && Date.now() < state.expiresAtMs) {
           scheduleNextPoll();
         }
       } finally {
-        activeAbortController = null;
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+        }
+        if (activeAbortController === controller) {
+          activeAbortController = null;
+        }
       }
     };
 
@@ -468,18 +560,26 @@ function createLineReader(input, output) {
   };
 }
 
-function promptHidden(promptText, input, output) {
+export function promptHidden(promptText, input, output) {
   return new Promise((resolve) => {
     output.write(promptText);
     let password = '';
     const onData = (chunk) => {
-      const str = chunk.toString('utf8');
+      const rawStr = chunk.toString('utf8');
+      const str = rawStr
+        .replace(/\x1b(?:\[[0-9;?]*[ -/]*[@-~]|O[@-~]|[@-_])/g, '')
+        .replace(/\x1b/g, '');
       for (const char of str) {
         if (char === '\n' || char === '\r' || char === '\u0004') {
           input.removeListener('data', onData);
           try {
-            input.setRawMode(false);
+            if (typeof input.setRawMode === 'function') input.setRawMode(false);
           } catch {}
+          if (typeof input.pause === 'function') {
+            try {
+              input.pause();
+            } catch {}
+          }
           output.write('\n');
           resolve(password.trim());
           return;
@@ -487,8 +587,13 @@ function promptHidden(promptText, input, output) {
         if (char === '\u0003') {
           input.removeListener('data', onData);
           try {
-            input.setRawMode(false);
+            if (typeof input.setRawMode === 'function') input.setRawMode(false);
           } catch {}
+          if (typeof input.pause === 'function') {
+            try {
+              input.pause();
+            } catch {}
+          }
           output.write('\n');
           process.exit(1);
         }
@@ -496,16 +601,20 @@ function promptHidden(promptText, input, output) {
           if (password.length > 0) {
             password = password.slice(0, -1);
           }
-        } else {
+        } else if (char.charCodeAt(0) >= 0x20) {
           password += char;
         }
       }
     };
 
     try {
-      input.setRawMode(true);
+      if (typeof input.setRawMode === 'function') input.setRawMode(true);
     } catch {}
-    input.resume();
+    if (typeof input.resume === 'function') {
+      try {
+        input.resume();
+      } catch {}
+    }
     input.on('data', onData);
   });
 }
@@ -651,6 +760,12 @@ export async function runCliSetupWizard(options = {}) {
       throw new Error('Invalid or empty Memoreal API key');
     }
 
+    output.write('Verifying connection with Memoreal Cloud...\n');
+    const authRes = await verifyApiKeyAuth(effectiveApiUrl, cleanKey, { fetchImpl });
+    if (authRes.status === 401 || authRes.status === 403) {
+      throw new Error(`Invalid or revoked Memoreal API key (HTTP ${authRes.status})`);
+    }
+
     output.write('\nSaving configuration...\n');
     const saved = saveMemorealConfig({
       apiKey: cleanKey,
@@ -666,20 +781,11 @@ export async function runCliSetupWizard(options = {}) {
       preferredTool: toolSlug,
     });
 
-    output.write('Verifying connection with Memoreal Cloud...\n');
     let workspace = null;
-    try {
-      const healthRes = await fetchImpl(`${effectiveApiUrl}/v1/health`, {
-        headers: { Authorization: `Bearer ${cleanKey}` },
-      });
-      if (healthRes.ok) {
-        const healthJson = await healthRes.json().catch(() => ({}));
-        workspace = sanitizeWorkspaceMetadata(healthJson.workspace);
-      } else {
-        output.write(`Warning: /v1/health returned status ${healthRes.status}\n`);
-      }
-    } catch (err) {
-      output.write(`Warning: Failed to reach /v1/health: ${err.message}\n`);
+    if (authRes.ok) {
+      workspace = sanitizeWorkspaceMetadata(authRes.data?.workspace);
+    } else {
+      output.write(`Warning: Connection verification returned status ${authRes.status}\n`);
     }
 
     printSummary(output, effectiveApiUrl, saved.configPath, ides.updated);
@@ -795,11 +901,9 @@ export async function runCliSetupWizard(options = {}) {
 
   output.write('Verifying connection with Memoreal Cloud...\n');
   try {
-    const healthRes = await fetchImpl(`${effectiveApiUrl}/v1/health`, {
-      headers: { Authorization: `Bearer ${freshKey}` },
-    });
-    if (!healthRes.ok) {
-      output.write(`Warning: /v1/health returned status ${healthRes.status}\n`);
+    const authRes = await verifyApiKeyAuth(effectiveApiUrl, freshKey, { fetchImpl });
+    if (!authRes.ok) {
+      output.write(`Warning: /v1/health returned status ${authRes.status}\n`);
     }
   } catch (err) {
     output.write(`Warning: Failed to reach /v1/health: ${err.message}\n`);

@@ -74,7 +74,7 @@ Today: 2026-11-26
       "description": "Create .gitignore ignoring .worktrees/, implement src/config-store.mjs for placeholder filtering, dynamic config.env resolution, 0600 persistence, and .bak IDE merging under MEMOREAL_HOME, and build unit tests in test/config-store.test.mjs.",
       "atomicChanges": [
         ".gitignore: create ignore rules for `.worktrees/`, `node_modules/`, `.DS_Store`, and `*.bak`.",
-        "src/config-store.mjs: implement `isPlaceholderApiKey(raw)`, `sanitizeApiKey(raw)`, and `POLITE_ONBOARDING_ACTION` driving the 3-Click Wizard via `AskUserQuestion` or `question`.",
+        "src/config-store.mjs: implement `isPlaceholderApiKey(raw)`, `sanitizeApiKey(raw)` (enforcing `/^[A-Za-z0-9_.-]+$/`), `normalizeApiUrl(raw)` (rejecting quotes/whitespace/shell metacharacters and non-HTTPS non-loopback URLs), and `POLITE_ONBOARDING_ACTION`.",
         "src/config-store.mjs: implement `resolveHomeDir(options)`, `readSavedMemorealConfig(options)`, `resolveEffectiveApiKey(overrideKey, options)`, and `resolveEffectiveApiUrl(overrideUrl, options)` honoring `runtimePairedApiKey`, explicit blank `MEMOREAL_API_KEY === ''` isolation, and `MEMOREAL_HOME`.",
         "src/config-store.mjs: implement `saveMemorealConfig({ apiKey, apiUrl, homeDir, env })` (`0700` dir, `0600` `config.env` + `.bak`) and `configureDetectedIdes({ apiKey, apiUrl, homeDir, env, preferredTool })` merging `memoreal` into `.config/opencode/opencode.json` (using OpenCode native `.mcp.memoreal = { type: 'remote', url, enabled: true, headers }`, never `.mcpServers`, and creating it when `preferredTool === 'opencode'`), `.cursor/mcp.json`, `.codeium/windsurf/mcp_config.json`, `.vscode/mcp.json`, Claude Desktop `claude_desktop_config.json`, and existing `.claude.json` with `.bak` backups while skipping malformed JSON.",
         "test/config-store.test.mjs: build unit tests verifying placeholder key filtering, `resolveEffectiveApiKey` test isolation, `0600` `config.env` persistence, and `.bak` IDE config merging (leaving malformed JSON untouched) strictly inside `MEMOREAL_HOME`."
@@ -96,17 +96,20 @@ Today: 2026-11-26
       "id": "WS-1",
       "wave": 0,
       "layer": "interfaces_first",
-      "title": "connect_account Schema, memoreal-connect Skill & Schema Unit Tests",
-      "description": "Update src/schemas.mjs with 3-Click Wizard instructions and the 15th connect_account tool schema, author skills/memoreal-connect/SKILL.md, and update unit tests in test/memoria-mcp.test.mjs.",
+      "title": "connect_account Schema, Connect Skills & Schema Unit Tests",
+      "description": "Update src/schemas.mjs with 3-Click Wizard instructions and connect_account (supporting string or object workspace), author skills/memoreal-connect/SKILL.md and skills/memoria-connect/SKILL.md, sync skills/memoria-doctor/SKILL.md, and update test/memoria-mcp.test.mjs.",
       "atomicChanges": [
         "src/schemas.mjs: update `MCP_SERVER_INSTRUCTIONS` (preserving `Memoreal Cloud`) to instruct assistants to run the 3-Click Interactive In-Chat Wizard via `AskUserQuestion` or `question` when unauthenticated and never ask users to paste raw API keys.",
-        "src/schemas.mjs: append `connect_account` to `MCP_TOOLS` (15 tools total) with `annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }`, `inputSchema` (`action`, `open_browser`, `client_name`, `required: []`), `outputSchema` (`type: 'object'`), and `Use when` disambiguation text.",
-        "skills/memoreal-connect/SKILL.md: create `/memoreal-connect` slash-command skill driving the 3-Click Interactive In-Chat Wizard (`AskUserQuestion` / `question` Step 1 connect card, Step 2 `connect_account` start/status verification card, Step 3 repo code-graph indexing card).",
-        "test/memoria-mcp.test.mjs: update unit tests for 15 tools (`MCP_TOOLS.length === 15`), asserting `connect_account` satisfies Glama TDQS `annotations`, `outputSchema`, `/Use (when|at|to|after|before)/i`, and `required: []`."
+        "src/schemas.mjs: append `connect_account` to `MCP_TOOLS` (15 tools total) with `annotations`, `inputSchema`, `outputSchema` (`workspace` using `anyOf: [{ type: 'string' }, { type: 'object' }]`), and `Use when` disambiguation text.",
+        "skills/memoreal-connect/SKILL.md: create `/memoreal-connect` and mirror `skills/memoria-connect/SKILL.md` driving the 3-Click Interactive In-Chat Wizard (`AskUserQuestion` / `question` Steps 1-3).",
+        "skills/memoria-doctor/SKILL.md: align legacy doctor alias with 3-Click Wizard onboarding and ensure zero `brain.kolivri.com` references across `skills/`.",
+        "test/memoria-mcp.test.mjs: update unit tests for 15 tools (`MCP_TOOLS.length === 15`), asserting `connect_account` satisfies Glama TDQS `annotations`, `outputSchema` (`workspace` `anyOf` string/object), `/Use (when|at|to|after|before)/i`, and `required: []`."
       ],
       "ownedFiles": [
         "src/schemas.mjs",
         "skills/memoreal-connect/SKILL.md",
+        "skills/memoria-connect/SKILL.md",
+        "skills/memoria-doctor/SKILL.md",
         "test/memoria-mcp.test.mjs"
       ],
       "readOnlyContext": [
@@ -121,13 +124,13 @@ Today: 2026-11-26
       "layer": "providers_parallel",
       "dependsOn": ["WS-0"],
       "title": "Device-Pairing Wizard Controller, Terminal CLI Setup & Unit Tests",
-      "description": "Implement src/wizard.mjs providing non-blocking OS browser launch, background /v1/auth/device/poll state machine with strict api_key redaction, and runCliSetupWizard(), plus unit tests in test/wizard-unit.test.mjs.",
+      "description": "Implement src/wizard.mjs providing non-blocking OS browser launch, background /v1/auth/device/poll state machine supporting string or object workspace with strict api_key redaction, and runCliSetupWizard(), plus unit tests in test/wizard-unit.test.mjs.",
       "atomicChanges": [
         "src/wizard.mjs: implement `openUrlInBrowser(url, options)` spawning `open` (`darwin`), `xdg-open` (`linux`), or `cmd /c start \"\"` (`win32`) detached with `.unref()` and silent error handling while respecting `MEMOREAL_NO_BROWSER=1`.",
-        "src/wizard.mjs: implement `sanitizeWorkspaceMetadata(workspace)` stripping secret properties (`api_key`, `apiKey`, `token`, `secret`) and `normalizeClientToolSlug(rawName)` mapping host clients to `'opencode'`, `'cursor'`, `'claude-code'`, `'vscode'`, `'windsurf'`, `'zed'`, or `'codex'`.",
-        "src/wizard.mjs: implement `createConnectWizardController(options)` handling `already_connected` `/v1/health` check, `action: 'start'` (`POST /v1/auth/device/start` sending `{ client_name: args.client_name || connectedClientName || 'Memoreal MCP', tool }` + `.unref()` background `POST /v1/auth/device/poll` saving `0600` config, merging IDE configs with `preferredTool: tool`, invoking `onApproved`, and returning 3-Click Wizard Step 2 message), and `action: 'status'`.",
-        "src/wizard.mjs: implement `runCliSetupWizard(options)` supporting `--browser` auto-start and interactive TTY choices `[1] Sign in via Browser with Google / Email (Recommended — 1,000 free calls, zero copy-paste)` and `[2] Enter an existing API key (hidden input)`, saving `0600` config, updating IDEs, verifying `/v1/health`, and printing a secret-free summary.",
-        "test/wizard-unit.test.mjs: build unit tests verifying `sanitizeWorkspaceMetadata` redaction, `openUrlInBrowser` platform/flag handling, `createConnectWizardController` start/poll/status transitions, and `runCliSetupWizard` mock execution."
+        "src/wizard.mjs: implement `sanitizeWorkspaceMetadata(workspace)` supporting both trimmed non-secret string workspace slugs (such as `'acme'`) and sanitized plain objects while stripping secret properties/values, plus `normalizeClientToolSlug(rawName)`.",
+        "src/wizard.mjs: implement `createConnectWizardController(options)` verifying existing keys via `POST /v1/mcp` `ping` (with `404` `/v1/health` fallback), guarding `executePoll` with per-poll timeout + `state.device_code === deviceCode` + controller identity checks, and handling `start`/`status`.",
+        "src/wizard.mjs: implement `runCliSetupWizard(options)` supporting `--browser` and TTY choices `[1]` / `[2]` (calling `input.pause()` and ignoring ANSI escape sequences in `promptHidden`), verifying keys via `POST /v1/mcp` `ping` (rejecting `401`), and printing a secret-free summary.",
+        "test/wizard-unit.test.mjs: build unit tests verifying `sanitizeWorkspaceMetadata` (string `'acme'` + objects), `promptHidden` TTY `input.pause()` + ANSI escape filtering, `POST /v1/mcp` `ping` `401` rejection vs `404` health fallback, and stale-`deviceCode` poll safety."
       ],
       "ownedFiles": [
         "src/wizard.mjs",
@@ -145,14 +148,14 @@ Today: 2026-11-26
       "wave": 1,
       "layer": "providers_parallel",
       "dependsOn": ["WS-0"],
-      "title": "Silent-When-Unregistered Hooks, Doctor Sync & Hook Unit Tests",
-      "description": "Sync hooks/hooks.json, opencode/memoreal-hooks.js, opencode/memoria-hooks.js, and skills/memoreal-doctor/SKILL.md so Read/Edit/Write hooks stay silent when unregistered and SessionStart emits the one-time 3-Click Wizard prompt, with unit tests in test/hooks-onboarding.test.mjs.",
+      "title": "Silent-When-Unregistered Hooks, isChildSession Guard, ?tool=opencode & Unit Tests",
+      "description": "Sync hooks/hooks.json, opencode/memoreal-hooks.js, opencode/memoria-hooks.js, and skills/memoreal-doctor/SKILL.md with isChildSession/isChildSubagentSession child suppression, ?tool=opencode fallback URL, and unregistered silence, tested in test/hooks-onboarding.test.mjs.",
       "atomicChanges": [
-        "hooks/hooks.json: filter placeholder keys (`mem_dev_your_key_here`, `mem_dev_*...*`, `YOUR_API_KEY`, `<*>`) and exit silently on `PreCompact`, `PostCompact`, `UserPromptSubmit`, `PostToolUse` (`TaskCreate`, `Write`, `Edit`, `Read`), `TaskCompleted`, and `Stop` when unregistered while emitting the polite one-time 3-Click Wizard message on `SessionStart`.",
-        "opencode/memoreal-hooks.js: reject placeholder keys in `resolveCloudConfig`, return the one-time 3-Click Wizard (`AskUserQuestion` / `question`) prompt from `fetchSessionStartContext` when `!apiKey`, and suppress `Read`/`Write`/`Edit`/`todowrite`/compaction/correction/stop hook output when `!resolveCloudConfig().apiKey`.",
-        "opencode/memoria-hooks.js: re-export `isPlaceholderApiKey` and `ONBOARDING_WIZARD_PROMPT` alongside `MemorealHooksPlugin` and `setup` so OpenCode plugins expose the 3-Click Interactive In-Chat Wizard contract.",
+        "hooks/hooks.json: filter placeholder keys, move `NS=` after unregistered `exit 0` in `SessionStart`, provide inline POSIX `PWD` namespace fallback across all 10 hooks so `stderr` is empty without `install.sh`, and stay silent when unregistered.",
+        "opencode/memoreal-hooks.js: implement and export `isChildSession` and `isChildSubagentSession` guarding `setup` and `MemorealHooksPlugin` hooks, include `https://memoreal.kolivri.com/connect?tool=opencode` (`tool: \"opencode\"`, `client_name: \"OpenCode\"`) in `ONBOARDING_WIZARD_PROMPT`, and suppress non-SessionStart hooks when unregistered.",
+        "opencode/memoria-hooks.js: re-export `isChildSession`, `isChildSubagentSession`, `isPlaceholderApiKey`, and `ONBOARDING_WIZARD_PROMPT` alongside `MemorealHooksPlugin` and `setup` (both named and default exports).",
         "skills/memoreal-doctor/SKILL.md: ensure zero `brain.kolivri.com` references, detect placeholder keys in `~/.memoreal/config.env`, and direct unconfigured users to the 3-Click Wizard (`connect_account` or `npx -y @kolivri/memoreal-mcp setup`) without pasting raw keys.",
-        "test/hooks-onboarding.test.mjs: build unit tests verifying `hooks/hooks.json` and `opencode/memoria-hooks.js` emit zero output on `Read`/`Edit`/`Write` when unregistered or using placeholder keys, emit the one-time 3-Click Wizard prompt on `SessionStart`, and `skills/memoreal-doctor/SKILL.md` contains no `brain.kolivri.com`."
+        "test/hooks-onboarding.test.mjs: build unit tests covering registered OpenCode v2 `setup` (`MEMOREAL_API_KEY: 'mem_dev_valid123'`) across `read`/`write`/`edit`/`compaction`/`session.execution.succeeded` in root vs child sessions (proving zero `ReferenceError`), `?tool=opencode` prompt URL, and unregistered silence."
       ],
       "ownedFiles": [
         "hooks/hooks.json",
@@ -203,10 +206,9 @@ Today: 2026-11-26
       "title": "End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks E2E Suite",
       "description": "Create end-to-end integration test suite test/connect-wizard.test.mjs verifying connect_account OAuth device pairing over stdio MCP, zero-restart hot-reload, 0600 permissions, .bak IDE config merging, placeholder/401 guidance, and node src/server.mjs setup --browser.",
       "atomicChanges": [
-        "test/connect-wizard.test.mjs: add end-to-end stdio MCP test verifying `initialize` `clientInfo.name` (for example `'OpenCode'` or `'Cursor'`) forwards `client_name` and normalized `tool` slug (`'opencode'`, `'cursor'`, `'claude-code'`, `'vscode'`, `'windsurf'`, `'zed'`, `'codex'`) to `POST /v1/auth/device/start`, completes `connect_account` (`start` -> `poll` -> `status: 'connected'`), hot-reloads `encode_memory` without restart, writes `0600` `config.env` under `MEMOREAL_HOME`, and never exposes raw `api_key` in any MCP response.",
-        "test/connect-wizard.test.mjs: add end-to-end IDE config merge test strictly within `MEMOREAL_HOME` verifying `.bak` backups, OpenCode native `.mcp.memoreal` (`type: 'remote'`, never `.mcpServers`) in `.config/opencode/opencode.json`, and `.mcpServers.memoreal` across `.cursor/mcp.json`, `.codeium/windsurf/mcp_config.json`, `.vscode/mcp.json`, Claude Desktop `claude_desktop_config.json`, and existing `.claude.json` while leaving malformed JSON untouched.",
-        "test/connect-wizard.test.mjs: add end-to-end stdio MCP test for placeholder key rejection (`mem_dev_your_key_here`, `mem_dev_...`, `YOUR_API_KEY`, `<MEMOREAL_API_KEY>`), cross-process `config.env` hot-reload, and HTTP `401` responses containing `'Missing Memoreal API key: set MEMOREAL_API_KEY'` and 3-Click Wizard guidance.",
-        "test/connect-wizard.test.mjs: add end-to-end CLI process test spawning `node src/server.mjs setup --browser` (and `login` / hidden-key input) against a local mock HTTP server with `MEMOREAL_NO_BROWSER=1` and isolated `MEMOREAL_HOME`, verifying `0600` `config.env`, `/v1/health` verification, and zero raw `api_key` in stdout."
+        "test/connect-wizard.test.mjs: add end-to-end stdio MCP test verifying `initialize` `clientInfo.name` forwards `client_name` and normalized `tool` slug to `POST /v1/auth/device/start`, handles both string (`workspace: 'acme'`) and object `workspace` from `POST /v1/auth/device/poll`, hot-reloads `encode_memory` without restart, writes `0600` `config.env` under `MEMOREAL_HOME`, and never exposes raw `api_key`.",
+        "test/connect-wizard.test.mjs: add end-to-end IDE config merge test strictly within `MEMOREAL_HOME` verifying `.bak` backups, OpenCode native `.mcp.memoreal` (`type: 'remote'`, never `.mcpServers`), and `.mcpServers.memoreal` across `.cursor/mcp.json`, `.codeium/windsurf/mcp_config.json`, `.vscode/mcp.json`, Claude Desktop `claude_desktop_config.json`, and existing `.claude.json` while leaving malformed JSON untouched.",
+        "test/connect-wizard.test.mjs: add end-to-end stdio MCP and CLI tests for placeholder key rejection, cross-process `config.env` hot-reload via `node src/server.mjs setup --browser`, HTTP `401` guidance, `?tool=opencode` in OpenCode `SessionStart` prompt, `skills/memoria-connect/SKILL.md` + `skills/memoreal-connect/SKILL.md` existence, and zero `brain.kolivri.com` across every file in `skills/`."
       ],
       "ownedFiles": [
         "test/connect-wizard.test.mjs"
@@ -251,6 +253,7 @@ Today: 2026-11-26
   - `WS-3`: Updated `hooks/hooks.json`, `opencode/memoreal-hooks.js`, `opencode/memoria-hooks.js`, and `skills/memoreal-doctor/SKILL.md`, and added `test/hooks-onboarding.test.mjs` (`16/16` passing).
 - **Wave 2 (`WS-4`)**:
   - `WS-4`: Wired dynamic hot-reload (`runtimePairedApiKey` + `config.env`), `initialize` `clientInfo.name` capture, `connect_account` routing, `401` / missing-key 3-Click Wizard guidance, and `setup`/`login`/`init` CLI dispatch into `src/server.mjs`, `src/apify-main.mjs`, and `test/apify-actor.test.mjs` (`24/24` passing).
-- **Wave 3 (`WS-5`) & Precedence Refinements**:
-  - `WS-5`: Added end-to-end integration suite `test/connect-wizard.test.mjs`, refined placeholder-to-fallback candidate precedence across `src/config-store.mjs`, `src/wizard.mjs`, `hooks/hooks.json`, and `opencode/memoreal-hooks.js`, and passed Critic review (`PASS`; full `npm test`: `92/92` passing across `26` suites, `0` failures). Zero deviations from the approved design.
+- **Wave 3 (`WS-5`) & Critic Hardening Passes**:
+  - `WS-5` & Critic Remediation: Added `isChildSession` / `isChildSubagentSession` root-vs-child OpenCode hook guards and `?tool=opencode` (`client_name: "OpenCode"`) fallback URL in `opencode/memoreal-hooks.js` & `opencode/memoria-hooks.js`; added string `workspace` (`"acme"`) support in `src/wizard.mjs#sanitizeWorkspaceMetadata` and `src/schemas.mjs`; added `skills/memoria-connect/SKILL.md` and verified zero `brain.kolivri.com` across all `skills/*/SKILL.md`; hardened `promptHidden` (`input.pause()` + ANSI escape stripping), `executePoll` (timeout + `state.device_code` + controller guards), `verifyApiKeyAuth` (`POST /v1/mcp` `ping` rejecting `401` with `404` `/v1/health` fallback), `hooks/hooks.json` (inline POSIX `PWD` namespace fallback with empty `stderr`), and `src/config-store.mjs` (`/^[A-Za-z0-9_.-]+$/` key validation + HTTPS/loopback URL injection guards).
+  - **Full Integration Verification (`npm test`)**: **`115 / 115` tests passing** across **`29` suites** (`0` failures, `0` skipped). Zero deviations from the approved design.
 

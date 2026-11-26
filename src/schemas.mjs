@@ -517,8 +517,9 @@ export const MCP_TOOLS = Object.freeze([
           description: 'Whether the operating system browser was successfully launched.',
         },
         workspace: {
-          type: 'object',
-          description: 'Connected organization and workspace metadata (secret keys are stripped).',
+          anyOf: [{ type: 'string' }, { type: 'object' }],
+          description:
+            'Connected organization/workspace slug string (for example "acme") or sanitized metadata object (secret keys are stripped).',
         },
       },
       required: ['status', 'message'],

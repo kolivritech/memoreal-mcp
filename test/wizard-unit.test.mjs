@@ -12,6 +12,8 @@ import {
   openUrlInBrowser,
   createConnectWizardController,
   runCliSetupWizard,
+  promptHidden,
+  verifyApiKeyAuth,
 } from '../src/wizard.mjs';
 
 describe('wizard-unit', () => {
@@ -69,11 +71,25 @@ describe('wizard-unit', () => {
   });
 
   describe('sanitizeWorkspaceMetadata', () => {
-    it('returns undefined for non-objects or nullish values', () => {
+    it('returns undefined for null, undefined, non-string primitives, and empty/secret strings', () => {
       assert.equal(sanitizeWorkspaceMetadata(null), undefined);
       assert.equal(sanitizeWorkspaceMetadata(undefined), undefined);
-      assert.equal(sanitizeWorkspaceMetadata('string'), undefined);
       assert.equal(sanitizeWorkspaceMetadata(123), undefined);
+      assert.equal(sanitizeWorkspaceMetadata(true), undefined);
+      assert.equal(sanitizeWorkspaceMetadata(''), undefined);
+      assert.equal(sanitizeWorkspaceMetadata('   '), undefined);
+      assert.equal(sanitizeWorkspaceMetadata('mem_dev_secret123'), undefined);
+      assert.equal(sanitizeWorkspaceMetadata('sk-1234567890'), undefined);
+      assert.equal(sanitizeWorkspaceMetadata('Bearer token12345'), undefined);
+    });
+
+    it('supports string workspace slug while trimming whitespace and redacting secret patterns', () => {
+      assert.equal(sanitizeWorkspaceMetadata('acme'), 'acme');
+      assert.equal(sanitizeWorkspaceMetadata('  acme  '), 'acme');
+      assert.equal(sanitizeWorkspaceMetadata(''), undefined);
+      assert.equal(sanitizeWorkspaceMetadata('mem_dev_secret123'), undefined);
+      assert.equal(sanitizeWorkspaceMetadata('sk-12345678'), undefined);
+      assert.equal(sanitizeWorkspaceMetadata('Bearer secret'), undefined);
     });
 
     it('recursively strips secret properties and raw api_key string patterns', () => {
@@ -445,6 +461,87 @@ describe('wizard-unit', () => {
       controller.close();
     });
 
+    it('handles device flow with string workspace (e.g. "acme") from /v1/auth/device/poll', async () => {
+      let pollCount = 0;
+      let approvedCallbackCalled = false;
+      let approvedWorkspace = null;
+
+      const mockFetch = async (url, opts) => {
+        if (url.endsWith('/v1/auth/device/start')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              device_code: 'dev_code_str_ws',
+              user_code: 'ACME-1234',
+              verification_uri: 'https://memoreal.kolivri.com/connect',
+              verification_uri_complete: 'https://memoreal.kolivri.com/connect?code=ACME-1234',
+              expires_in: 300,
+              interval: 0.05,
+            }),
+          };
+        }
+
+        if (url.endsWith('/v1/auth/device/poll')) {
+          pollCount++;
+          if (pollCount === 1) {
+            return {
+              ok: true,
+              status: 200,
+              json: async () => ({ status: 'pending' }),
+            };
+          }
+
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              status: 'approved',
+              api_key: 'mem_dev_acme_paired_key',
+              workspace: 'acme',
+            }),
+          };
+        }
+
+        throw new Error(`Unexpected fetch ${url}`);
+      };
+
+      const controller = createConnectWizardController({
+        getApiUrl: () => 'https://mock.memoria.kolivri.com',
+        getExistingApiKey: () => '',
+        getConnectedClientName: () => 'OpenCode Acme Test',
+        fetchImpl: mockFetch,
+        homeDir: tmpHome,
+        env: { MEMOREAL_HOME: tmpHome },
+        spawnImpl: () => ({ on: () => {}, unref: () => {} }),
+        onApproved: ({ apiKey, apiUrl, workspace }) => {
+          approvedCallbackCalled = true;
+          approvedWorkspace = workspace;
+          assert.equal(apiKey, 'mem_dev_acme_paired_key');
+          assert.equal(apiUrl, 'https://mock.memoria.kolivri.com');
+          assert.equal(workspace, 'acme');
+        },
+      });
+
+      const startRes = await controller.handleConnectAccount({
+        action: 'start',
+        client_name: 'OpenCode Acme Test',
+      });
+      assert.equal(startRes.status, 'waiting_for_browser');
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      assert.equal(approvedCallbackCalled, true);
+      assert.equal(approvedWorkspace, 'acme');
+
+      const status = await controller.handleConnectAccount({ action: 'status' });
+      assert.equal(status.status, 'connected');
+      assert.equal(status.workspace, 'acme');
+      assert.equal('api_key' in status, false);
+
+      controller.close();
+    });
+
     it('handles denied and expired polling transitions', async () => {
       // Test Denied
       let pollCount = 0;
@@ -516,6 +613,171 @@ describe('wizard-unit', () => {
       assert.equal(statusExpired.status, 'expired');
       assert.match(statusExpired.message, /expired/i);
       controllerExpired.close();
+    });
+
+    it('action omitted: does NOT return already_connected when POST /v1/mcp returns 401 even if /v1/health returns 200', async () => {
+      let startCalled = false;
+      const mockFetch = async (url) => {
+        if (url.endsWith('/v1/mcp')) {
+          return { ok: false, status: 401, json: async () => ({ error: 'Revoked' }) };
+        }
+        if (url.endsWith('/v1/health')) {
+          return { ok: true, status: 200, json: async () => ({ status: 'healthy' }) };
+        }
+        if (url.endsWith('/v1/auth/device/start')) {
+          startCalled = true;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              device_code: 'dev_code_fallback',
+              user_code: 'FALL-1234',
+              verification_uri: 'https://memoreal.kolivri.com/connect',
+              expires_in: 300,
+              interval: 0.05,
+            }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      };
+
+      const controller = createConnectWizardController({
+        getApiUrl: () => 'https://mock.memoria.kolivri.com',
+        getExistingApiKey: () => 'mem_dev_revoked_key',
+        fetchImpl: mockFetch,
+        homeDir: tmpHome,
+        env: { MEMOREAL_NO_BROWSER: '1' },
+      });
+
+      const res = await controller.handleConnectAccount({});
+      assert.notEqual(res.status, 'already_connected');
+      assert.equal(res.status, 'waiting_for_browser');
+      assert.equal(startCalled, true);
+      controller.close();
+    });
+
+    it('action: "status" when not_started does NOT return connected when POST /v1/mcp returns 401', async () => {
+      const mockFetch = async (url) => {
+        if (url.endsWith('/v1/mcp')) {
+          return { ok: false, status: 401, json: async () => ({ error: 'Revoked' }) };
+        }
+        if (url.endsWith('/v1/health')) {
+          return { ok: true, status: 200, json: async () => ({ status: 'healthy' }) };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      };
+
+      const controller = createConnectWizardController({
+        getApiUrl: () => 'https://mock.memoria.kolivri.com',
+        getExistingApiKey: () => 'mem_dev_revoked_key',
+        fetchImpl: mockFetch,
+        homeDir: tmpHome,
+      });
+
+      const res = await controller.handleConnectAccount({ action: 'status' });
+      assert.equal(res.status, 'not_started');
+      assert.match(res.message, /Step 1/);
+      controller.close();
+    });
+
+    it('safeguards against superseded deviceCode: poll response from older start call is ignored', async () => {
+      let firstPollResolve = null;
+      const firstPollPromise = new Promise((resolve) => {
+        firstPollResolve = resolve;
+      });
+
+      const approvedCalls = [];
+
+      const mockFetch = async (url, opts) => {
+        if (url.endsWith('/v1/auth/device/start')) {
+          const body = JSON.parse(opts.body);
+          if (body.client_name === 'Client First') {
+            return {
+              ok: true,
+              status: 200,
+              json: async () => ({
+                device_code: 'first_device_code',
+                user_code: 'FIRST-01',
+                verification_uri: 'https://memoreal.kolivri.com/connect',
+                expires_in: 300,
+                interval: 0.05,
+              }),
+            };
+          } else {
+            return {
+              ok: true,
+              status: 200,
+              json: async () => ({
+                device_code: 'second_device_code',
+                user_code: 'SECOND-02',
+                verification_uri: 'https://memoreal.kolivri.com/connect',
+                expires_in: 300,
+                interval: 0.05,
+              }),
+            };
+          }
+        }
+
+        if (url.endsWith('/v1/auth/device/poll')) {
+          const body = JSON.parse(opts.body);
+          if (body.device_code === 'first_device_code') {
+            await firstPollPromise;
+            return {
+              ok: true,
+              status: 200,
+              json: async () => ({
+                status: 'approved',
+                api_key: 'mem_dev_stale_old_key',
+                workspace: 'stale_org',
+              }),
+            };
+          }
+          if (body.device_code === 'second_device_code') {
+            return {
+              ok: true,
+              status: 200,
+              json: async () => ({
+                status: 'approved',
+                api_key: 'mem_dev_fresh_second_key',
+                workspace: 'fresh_org',
+              }),
+            };
+          }
+        }
+
+        throw new Error(`Unexpected URL: ${url}`);
+      };
+
+      const controller = createConnectWizardController({
+        getApiUrl: () => 'https://mock.memoria.kolivri.com',
+        getExistingApiKey: () => '',
+        fetchImpl: mockFetch,
+        homeDir: tmpHome,
+        env: { MEMOREAL_NO_BROWSER: '1', MEMOREAL_HOME: tmpHome },
+        onApproved: (data) => {
+          approvedCalls.push(data);
+        },
+      });
+
+      const res1 = await controller.handleConnectAccount({ action: 'start', client_name: 'Client First' });
+      assert.equal(res1.user_code, 'FIRST-01');
+
+      const res2 = await controller.handleConnectAccount({ action: 'start', client_name: 'Client Second' });
+      assert.equal(res2.user_code, 'SECOND-02');
+
+      firstPollResolve();
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      assert.equal(approvedCalls.length, 1);
+      assert.equal(approvedCalls[0].apiKey, 'mem_dev_fresh_second_key');
+      assert.equal(approvedCalls[0].workspace, 'fresh_org');
+
+      const status = await controller.handleConnectAccount({ action: 'status' });
+      assert.equal(status.status, 'connected');
+      assert.equal(status.workspace, 'fresh_org');
+
+      controller.close();
     });
   });
 
@@ -682,6 +944,78 @@ describe('wizard-unit', () => {
       assert.match(outputText, /Memoreal Connected Successfully!/);
     });
 
+    it('--browser flow: handles string workspace (e.g. "acme") from /v1/auth/device/poll', async () => {
+      let outputText = '';
+      const mockOutput = new Writable({
+        write(chunk, enc, cb) {
+          outputText += chunk.toString();
+          cb();
+        },
+      });
+
+      let pollCount = 0;
+
+      const mockFetch = async (url) => {
+        if (url.endsWith('/v1/auth/device/start')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              device_code: 'cli_dev_code_str_ws',
+              user_code: 'ACME-5678',
+              verification_uri: 'https://memoreal.kolivri.com/connect',
+              verification_uri_complete: 'https://memoreal.kolivri.com/connect?code=ACME-5678',
+              expires_in: 300,
+              interval: 0.05,
+            }),
+          };
+        }
+
+        if (url.endsWith('/v1/auth/device/poll')) {
+          pollCount++;
+          if (pollCount === 1) {
+            return {
+              ok: true,
+              json: async () => ({ status: 'pending' }),
+            };
+          }
+          return {
+            ok: true,
+            json: async () => ({
+              status: 'approved',
+              api_key: 'mem_dev_paired_cli_key_acme',
+              workspace: 'acme',
+            }),
+          };
+        }
+
+        if (url.endsWith('/v1/health')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ status: 'healthy', workspace: 'acme' }),
+          };
+        }
+
+        throw new Error(`Unexpected URL: ${url}`);
+      };
+
+      const res = await runCliSetupWizard({
+        argv: ['--browser', '--tool', 'opencode'],
+        output: mockOutput,
+        homeDir: tmpHome,
+        env: { MEMOREAL_HOME: tmpHome },
+        fetchImpl: mockFetch,
+        spawnImpl: () => ({ on: () => {}, unref: () => {} }),
+      });
+
+      assert.equal(res.ok, true);
+      assert.ok(pollCount >= 2);
+      assert.equal(res.workspace, 'acme');
+      assert.equal(outputText.includes('mem_dev_paired_cli_key_acme'), false);
+      assert.match(outputText, /Memoreal Connected Successfully!/);
+    });
+
     it('interactive flow: choice [2] allows entering API key via non-TTY stream input', async () => {
       let outputText = '';
       const mockOutput = new Writable({
@@ -774,6 +1108,165 @@ describe('wizard-unit', () => {
       assert.ok(fs.existsSync(res.configPath));
       assert.equal(outputText.includes('mem_dev_choice_1_key'), false);
       assert.match(outputText, /Authorization confirmed!/);
+    });
+
+    it('--key flow: rejects 401 from POST /v1/mcp even when /v1/health returns 200 and does not save config', async () => {
+      const mockFetch = async (url) => {
+        if (url.endsWith('/v1/mcp')) {
+          return { ok: false, status: 401, json: async () => ({ error: 'Invalid key' }) };
+        }
+        if (url.endsWith('/v1/health')) {
+          return { ok: true, status: 200, json: async () => ({ status: 'healthy' }) };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      };
+
+      const mockOutput = new Writable({ write(c, e, cb) { cb(); } });
+
+      await assert.rejects(
+        async () => {
+          await runCliSetupWizard({
+            argv: ['setup', '--key', 'mem_dev_bad_key'],
+            output: mockOutput,
+            homeDir: tmpHome,
+            env: { MEMOREAL_HOME: tmpHome },
+            fetchImpl: mockFetch,
+          });
+        },
+        /Invalid or revoked Memoreal API key \(HTTP 401\)/
+      );
+
+      const savedConfigFile = path.join(tmpHome, '.memoreal', 'config.env');
+      assert.equal(fs.existsSync(savedConfigFile), false, 'Should not persist bad API key to config.env');
+    });
+
+    it('--key flow: falls back to /v1/health when POST /v1/mcp returns 404', async () => {
+      let mcpCalled = false;
+      let healthCalled = false;
+      const mockFetch = async (url, opts) => {
+        if (url.endsWith('/v1/mcp')) {
+          mcpCalled = true;
+          return { ok: false, status: 404, json: async () => ({ error: 'Not Found' }) };
+        }
+        if (url.endsWith('/v1/health')) {
+          healthCalled = true;
+          assert.equal(opts.headers.Authorization, 'Bearer mem_dev_fallback_key');
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              status: 'healthy',
+              workspace: 'fallback-org',
+            }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      };
+
+      const mockOutput = new Writable({ write(c, e, cb) { cb(); } });
+
+      const res = await runCliSetupWizard({
+        argv: ['setup', '--key', 'mem_dev_fallback_key'],
+        output: mockOutput,
+        homeDir: tmpHome,
+        env: { MEMOREAL_HOME: tmpHome },
+        fetchImpl: mockFetch,
+      });
+
+      assert.equal(res.ok, true);
+      assert.equal(mcpCalled, true);
+      assert.equal(healthCalled, true);
+      assert.equal(res.workspace, 'fallback-org');
+      assert.ok(fs.existsSync(res.configPath));
+    });
+  });
+
+  describe('verifyApiKeyAuth', () => {
+    it('rejects 401 from POST /v1/mcp without falling back to /v1/health', async () => {
+      let healthCalled = false;
+      const mockFetch = async (url) => {
+        if (url.endsWith('/v1/mcp')) {
+          return {
+            ok: false,
+            status: 401,
+            json: async () => ({ error: 'Unauthorized' }),
+          };
+        }
+        if (url.endsWith('/v1/health')) {
+          healthCalled = true;
+          return { ok: true, status: 200, json: async () => ({ status: 'healthy' }) };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      };
+
+      const res = await verifyApiKeyAuth('https://mock.memoria.kolivri.com', 'mem_dev_revoked_key', { fetchImpl: mockFetch });
+      assert.equal(res.ok, false);
+      assert.equal(res.status, 401);
+      assert.equal(healthCalled, false, 'Must NOT fall back to /v1/health on 401');
+    });
+
+    it('falls back to /v1/health when POST /v1/mcp returns 404', async () => {
+      let mcpCalled = false;
+      let healthCalled = false;
+      const mockFetch = async (url) => {
+        if (url.endsWith('/v1/mcp')) {
+          mcpCalled = true;
+          return {
+            ok: false,
+            status: 404,
+            json: async () => ({ error: 'Not Found' }),
+          };
+        }
+        if (url.endsWith('/v1/health')) {
+          healthCalled = true;
+          return { ok: true, status: 200, json: async () => ({ status: 'healthy', workspace: 'acme' }) };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      };
+
+      const res = await verifyApiKeyAuth('https://mock.memoria.kolivri.com', 'mem_dev_valid_key', { fetchImpl: mockFetch });
+      assert.equal(mcpCalled, true);
+      assert.equal(healthCalled, true);
+      assert.equal(res.ok, true);
+      assert.equal(res.status, 200);
+      assert.equal(res.data.workspace, 'acme');
+    });
+  });
+
+  describe('promptHidden', () => {
+    it('handles input.isTTY = true, strips ANSI escape sequences, and calls pause() on completion', async () => {
+      let paused = false;
+      let rawMode = null;
+      let writtenOutput = '';
+
+      const mockOutput = new Writable({
+        write(chunk, enc, cb) {
+          writtenOutput += chunk.toString();
+          cb();
+        },
+      });
+
+      const mockInput = new Readable({
+        read() {},
+      });
+      mockInput.isTTY = true;
+      mockInput.setRawMode = (mode) => {
+        rawMode = mode;
+      };
+      mockInput.pause = () => {
+        paused = true;
+      };
+
+      const promptPromise = promptHidden('Enter key: ', mockInput, mockOutput);
+
+      mockInput.push(Buffer.from('\x1b[Amem_dev_tty_123\n'));
+
+      const result = await promptPromise;
+      assert.equal(result, 'mem_dev_tty_123');
+      assert.equal(paused, true, 'input.pause() must be called to unref/pause PTY stdin');
+      assert.equal(rawMode, false, 'rawMode must be restored to false');
+      assert.match(writtenOutput, /Enter key: /);
+      assert.match(writtenOutput, /\n/);
     });
   });
 });

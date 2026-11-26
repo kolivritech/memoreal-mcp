@@ -4,11 +4,27 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 
 export const ONBOARDING_WIZARD_PROMPT =
-  'Polite Onboarding Action: Invite the user in chat to connect their free Memoreal account (1,000 free API calls & memories) in 1 click by calling the connect_account tool (opens Chrome OAuth automatically, zero copy-paste), or share https://memoreal.kolivri.com/connect (terminal wizard: npx -y @kolivri/memoreal-mcp setup). Never ask the user to paste their raw API key into chat.\n\n' +
+  'Polite Onboarding Action: Invite the user in chat to connect their free Memoreal account (1,000 free API calls & memories) in 1 click by calling the connect_account tool (opens Chrome OAuth automatically, zero copy-paste), or share https://memoreal.kolivri.com/connect?tool=opencode (terminal wizard: npx -y @kolivri/memoreal-mcp setup). Never ask the user to paste their raw API key into chat.\n\n' +
   'Drive the 3-Click Interactive In-Chat Wizard using AskUserQuestion (Claude Code) or question (OpenCode & Cursor):\n' +
   '- Step 1: Present choice card "Connect in 1 Click via Google / Browser (Recommended)" vs "Skip for this session".\n' +
-  '- Step 2: Call connect_account({ action: "start" }) and present clickable https://memoreal.kolivri.com/connect?code=XXXX-YYYY link with "I clicked Authorize — Verify" card (calling connect_account({ action: "status" })).\n' +
+  '- Step 2: Call connect_account({ action: "start" }) (tool: "opencode", client_name: "OpenCode") and present clickable https://memoreal.kolivri.com/connect?code=XXXX-YYYY link with "I clicked Authorize — Verify" card (calling connect_account({ action: "status" })).\n' +
   '- Step 3: Once connected, present choice card "Yes — Index repo now (Recommended)" vs "Later".'
+
+export async function isChildSession(ctx, sessionID, childCache) {
+  if (sessionID && childCache?.has(sessionID)) return childCache.get(sessionID)
+  if (sessionID && typeof ctx?.session?.get === "function") {
+    try {
+      const info = await ctx.session.get({ sessionID })
+      const isChild = Boolean(info?.parentID) || info?.agent === "flash-worker"
+      childCache?.set(sessionID, isChild)
+      return isChild
+    } catch {
+      return false
+    }
+  }
+  return process.env.PRD_FLASH_LEAF_WORKER === "1"
+}
+export const isChildSubagentSession = isChildSession
 
 export function isPlaceholderApiKey(raw) {
   if (typeof raw !== "string") return true
@@ -56,13 +72,16 @@ const CORRECTION_PATTERNS = [
 const SKIP_ENCODE_EXT = /\.(json|lock|sum|toml|yaml|yml|cfg|ini)$|\.env/i
 const CODE_FILE_EXT =
   /\.(rs|py|ts|tsx|js|jsx|mjs|cjs|go|java|kt|kts|c|h|cc|cpp|hpp|cxx|cs|rb|php|swift|scala|sh|bash|zsh|sql|proto)$/i
-const PLAN_PATH_REGEX = /(\.claude\/plans\/|\.opencode\/plans\/|docs\/.*plan|docs\/.*roadmap|design-log\/)/i
+const PLAN_PATH_REGEX = /(?:^|\/)prd\/|(\.claude\/plans\/|\.opencode\/plans\/|docs\/.*plan|docs\/.*roadmap|design-log\/)/i
 const SYSTEM_SKILL_PATH_REGEX =
   /(\/\.claude\/plugins\/|\/\.claude\/skills\/|\/\.agents\/skills\/|\/\.config\/opencode\/)/
 
 export function deriveNamespace(cwd) {
   let p = cwd || process.cwd()
-  p = p.replace(/\/\.claude\/worktrees\/.*$/, "").replace(/\/\.opencode\/worktrees\/.*$/, "")
+  p = p
+    .replace(/\/\.worktrees\/.*$/, "")
+    .replace(/\/\.claude\/worktrees\/.*$/, "")
+    .replace(/\/\.opencode\/worktrees\/.*$/, "")
   return p.replace(/\//g, "-")
 }
 
@@ -314,14 +333,17 @@ function buildTodoSuffix(sessionID, todos, previousTodosBySession, ns, homeDir) 
   return out
 }
 
-export const MemorealHooksPlugin = async ({ directory } = {}) => {
+export const MemorealHooksPlugin = async ({ directory, client } = {}) => {
   const sessionStartContextCache = new Map()
   const pendingCorrectionBySession = new Map()
   const previousTodosBySession = new Map()
+  const childSessionCache = new Map()
+  const checkChild = (sid) => isChildSession({ session: client?.session }, sid, childSessionCache)
 
   return {
     "chat.message": async (input, output) => {
       const sessionID = input?.sessionID
+      if (await checkChild(sessionID)) return
       if (!sessionID) return
 
       const msg = (output?.parts || [])
@@ -336,6 +358,7 @@ export const MemorealHooksPlugin = async ({ directory } = {}) => {
 
     "experimental.chat.system.transform": async (input, output) => {
       const sessionID = input?.sessionID || "default"
+      if (await checkChild(input?.sessionID)) return
       const ns = deriveNamespace(directory)
 
       if (!sessionStartContextCache.has(sessionID)) {
@@ -350,14 +373,24 @@ export const MemorealHooksPlugin = async ({ directory } = {}) => {
         }
       }
 
-      if (resolveCloudConfig().apiKey && pendingCorrectionBySession.get(sessionID) && Array.isArray(output?.system)) {
-        output.system.push(
-          `[memoreal-correction] The user appears to be correcting your approach. After addressing the correction, encode the lesson into Memoreal (namespace: ${ns}, type: semantic, salience: 0.9) as a rule: what was wrong, what the correct approach is, and why. This ensures the mistake is never repeated in future sessions.`
-        )
+      if (resolveCloudConfig().apiKey) {
+        const stopKey = `${sessionID}:stop`
+        const stopCtx = sessionStartContextCache.get(stopKey)
+        if (stopCtx && Array.isArray(output?.system)) {
+          output.system.push(stopCtx)
+          sessionStartContextCache.delete(stopKey)
+        }
+
+        if (pendingCorrectionBySession.get(sessionID) && Array.isArray(output?.system)) {
+          output.system.push(
+            `[memoreal-correction] The user appears to be correcting your approach. After addressing the correction, encode the lesson into Memoreal (namespace: ${ns}, type: semantic, salience: 0.9) as a rule: what was wrong, what the correct approach is, and why. This ensures the mistake is never repeated in future sessions.`
+          )
+        }
       }
     },
 
     "tool.execute.after": async (input, output) => {
+      if (await checkChild(input?.sessionID)) return
       if (!resolveCloudConfig().apiKey) return
       const tool = input?.tool
       const args = input?.args || {}
@@ -388,7 +421,8 @@ export const MemorealHooksPlugin = async ({ directory } = {}) => {
       }
     },
 
-    "experimental.session.compacting": async (_input, output) => {
+    "experimental.session.compacting": async (input, output) => {
+      if (await checkChild(input?.sessionID)) return
       if (!resolveCloudConfig().apiKey) return
       const ns = deriveNamespace(directory)
       output.context.push(
@@ -403,12 +437,14 @@ export const MemorealHooksPlugin = async ({ directory } = {}) => {
 
     event: async ({ event }) => {
       if (event?.type === "session.idle") {
-        if (!resolveCloudConfig().apiKey) return
         const sessionID =
           event?.properties?.sessionID ||
           event?.properties?.info?.id ||
           event?.sessionID ||
           "default"
+        const rawSid = event?.properties?.sessionID || event?.properties?.info?.id || event?.sessionID
+        if (await checkChild(rawSid)) return
+        if (!resolveCloudConfig().apiKey) return
         const ns = deriveNamespace(directory)
         sessionStartContextCache.set(
           `${sessionID}:stop`,
@@ -439,9 +475,12 @@ export const setup = async (ctx) => {
   const sessionStartContextCache = new Map()
   const pendingCorrectionBySession = new Map()
   const previousTodosBySession = new Map()
+  const childSessionCache = new Map()
+  const checkChild = (sid) => isChildSession(ctx, sid, childSessionCache)
 
-  await ctx.session.hook("prompt", (event) => {
+  await ctx.session.hook("prompt", async (event) => {
     const sessionID = event?.sessionID
+    if (await checkChild(sessionID)) return
     if (!sessionID) return
     const msg = (event?.prompt?.text || "").toLowerCase()
     const isCorrection = Boolean(msg && CORRECTION_PATTERNS.some((pat) => msg.includes(pat)))
@@ -450,6 +489,7 @@ export const setup = async (ctx) => {
 
   await ctx.session.hook("context", async (event) => {
     const sessionID = event?.sessionID || "default"
+    if (await checkChild(event?.sessionID)) return
     const ns = deriveNamespace(directory)
 
     if (!sessionStartContextCache.has(sessionID)) {
@@ -481,8 +521,9 @@ export const setup = async (ctx) => {
     }
   })
 
-  await ctx.tool.hook("execute.after", (event) => {
+  await ctx.tool.hook("execute.after", async (event) => {
     if (event.status !== "completed" || !event.result) return
+    if (await checkChild(event?.sessionID)) return
     if (!resolveCloudConfig().apiKey) return
     const tool = event.tool
     const args = event.input || {}
@@ -512,7 +553,8 @@ export const setup = async (ctx) => {
     }
   })
 
-  await ctx.session.hook("compaction", (event) => {
+  await ctx.session.hook("compaction", async (event) => {
+    if (await checkChild(event?.sessionID)) return
     if (!resolveCloudConfig().apiKey) return
     const ns = deriveNamespace(directory)
     if (Array.isArray(event?.system)) {
@@ -536,8 +578,9 @@ export const setup = async (ctx) => {
         signal: controller.signal,
       })) {
         if (event?.type === "session.execution.succeeded") {
+          const sessionID = event?.data?.sessionID || event?.sessionID || "default"
+          if (await checkChild(event?.data?.sessionID || event?.sessionID)) continue
           if (!resolveCloudConfig().apiKey) continue
-          const sessionID = event?.data?.sessionID || "default"
           const ns = deriveNamespace(directory)
           sessionStartContextCache.set(
             `${sessionID}:stop`,
@@ -561,4 +604,6 @@ export default {
   id: "memoreal-hooks",
   server: MemorealHooksPlugin,
   setup,
+  isChildSession,
+  isChildSubagentSession,
 }

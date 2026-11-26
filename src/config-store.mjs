@@ -46,6 +46,7 @@ export function sanitizeApiKey(raw) {
     str = str.slice(1, -1).trim();
   }
   if (isPlaceholderApiKey(str)) return '';
+  if (!/^[A-Za-z0-9_.-]+$/.test(str)) return '';
   return str;
 }
 
@@ -62,6 +63,19 @@ export function normalizeApiUrl(raw) {
   if (!url) return '';
   url = url.replace(/\/v1\/mcp\/?$/i, '');
   url = url.replace(/\/+$/, '');
+  if (!url) return '';
+
+  if (/[\"$`\\\s<>]|\x27/.test(url)) {
+    return '';
+  }
+
+  const isHttps = /^https:\/\/[A-Za-z0-9._:-]+(?:\/[A-Za-z0-9._/-]*)?$/i.test(url);
+  const isLoopbackHttp = /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/[A-Za-z0-9._/-]*)?$/i.test(url);
+
+  if (!isHttps && !isLoopbackHttp) {
+    return '';
+  }
+
   return url;
 }
 
@@ -214,6 +228,10 @@ export function saveMemorealConfig({ apiKey, apiUrl, homeDir, env, configDir } =
   const cleanKey = sanitizeApiKey(apiKey);
   if (!cleanKey) {
     throw new Error('Cannot save empty or placeholder Memoreal API key');
+  }
+
+  if (apiUrl !== undefined && String(apiUrl).trim() !== '' && !normalizeApiUrl(String(apiUrl))) {
+    throw new Error('Invalid or insecure Memoreal API URL');
   }
 
   const resolvedHome = resolveHomeDir({ homeDir, env });

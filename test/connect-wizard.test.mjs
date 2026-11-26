@@ -19,6 +19,8 @@ import {
   buildEditSuffix,
   fetchSessionStartContext,
   ONBOARDING_WIZARD_PROMPT,
+  MemorealHooksPlugin,
+  setup,
 } from '../opencode/memoria-hooks.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -423,7 +425,8 @@ describe('WS-5: End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks Suite',
         const lastMcpHeader = mockState.mcpRequests[mockState.mcpRequests.length - 1].headers;
         assert.equal(lastMcpHeader.authorization, 'Bearer mem_dev_e2e_paired_secret_777');
 
-        // Call connect_account({}) (with action omitted) -> assert status === 'already_connected' after pinging /v1/health
+        // Call connect_account({}) (with action omitted) -> assert status === 'already_connected' after pinging /v1/mcp
+        const mcpCountBeforeAlready = mockState.mcpRequests.length;
         const alreadyRes = await client.request('tools/call', {
           name: 'connect_account',
           arguments: {},
@@ -431,7 +434,9 @@ describe('WS-5: End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks Suite',
         const alreadyData = JSON.parse(alreadyRes.result.content[0].text);
         assert.equal(alreadyData.status, 'already_connected');
         assert.match(alreadyData.message, /already connected/i);
-        assert.ok(mockState.healthRequests.length >= 1);
+        assert.ok(mockState.mcpRequests.length > mcpCountBeforeAlready, 'Must have pinged POST /v1/mcp');
+        const lastMcpPing = mockState.mcpRequests[mockState.mcpRequests.length - 1];
+        assert.equal(lastMcpPing.headers.authorization, 'Bearer mem_dev_e2e_paired_secret_777');
 
         // Verify config.env permissions under MEMOREAL_HOME
         const memorealEnv = path.join(tempHome, '.memoreal', 'config.env');
@@ -493,7 +498,88 @@ describe('WS-5: End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks Suite',
     }
   });
 
-  it('2. forwards host IDE clientInfo.name as exact tool slugs to POST /v1/auth/device/start', async () => {
+  it('2. handles string workspace payload (e.g. acme) from /v1/auth/device/poll and asserts status connected with string workspace', async () => {
+    mockState.customPollQueue = [
+      { status: 200, body: { status: 'pending' } },
+      {
+        status: 200,
+        body: {
+          status: 'approved',
+          api_key: 'mem_dev_e2e_string_ws_888',
+          workspace: 'acme',
+        },
+      },
+    ];
+
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'memoreal-e2e-string-ws-'));
+    const client = createStdioMcpClient({
+      MEMOREAL_HOME: tempHome,
+      MEMOREAL_API_URL: mockUrl,
+      MEMOREAL_NO_BROWSER: '1',
+      MEMOREAL_API_KEY: '',
+      MEMORIA_API_KEY: '',
+    });
+
+    try {
+      await client.request('initialize', {
+        protocolVersion: '2024-11-05',
+        clientInfo: { name: 'OpenCode', version: '2.0.0' },
+      });
+
+      const startRes = await client.request('tools/call', {
+        name: 'connect_account',
+        arguments: { action: 'start' },
+      });
+      assert.equal(startRes.result.isError, false);
+
+      let connectedStatus = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        const pollStatusRes = await client.request('tools/call', {
+          name: 'connect_account',
+          arguments: { action: 'status' },
+        });
+        const parsed = JSON.parse(pollStatusRes.result.content[0].text);
+        if (parsed.status === 'connected') {
+          connectedStatus = parsed;
+          break;
+        }
+      }
+
+      assert.ok(connectedStatus, 'Must transition to status: "connected"');
+      assert.equal(connectedStatus.status, 'connected');
+      assert.equal(connectedStatus.workspace, 'acme');
+      assert.match(connectedStatus.message, /Step 3/);
+      assert.match(connectedStatus.message, /Yes — Index repo now \(Recommended\)/);
+
+      // Assert raw key is NEVER exposed in status response
+      const serializedStatus = JSON.stringify(connectedStatus);
+      assert.equal(serializedStatus.includes('mem_dev_e2e_string_ws_888'), false);
+
+      // Verify immediate zero-restart hot-reload for encode_memory
+      const encodeRes = await client.request('tools/call', {
+        name: 'encode_memory',
+        arguments: { content: 'String workspace memory hot-reload!' },
+      });
+      assert.equal(encodeRes.result.isError, false);
+      assert.ok(mockState.mcpRequests.length >= 1);
+      const lastMcpHeader = mockState.mcpRequests[mockState.mcpRequests.length - 1].headers;
+      assert.equal(lastMcpHeader.authorization, 'Bearer mem_dev_e2e_string_ws_888');
+
+      // Verify config.env was written with mode 0600
+      const memorealEnv = path.join(tempHome, '.memoreal', 'config.env');
+      assert.ok(fs.existsSync(memorealEnv));
+      if (process.platform !== 'win32') {
+        const memorealFileStat = fs.statSync(memorealEnv);
+        assert.equal(memorealFileStat.mode & 0o777, 0o600);
+      }
+    } finally {
+      await client.close();
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it('3. forwards host IDE clientInfo.name as exact tool slugs to POST /v1/auth/device/start', async () => {
     const ideCases = [
       { name: 'Cursor', expectedSlug: 'cursor', expectedClient: 'Cursor' },
       { name: 'claude-code', expectedSlug: 'claude-code', expectedClient: 'claude-code' },
@@ -535,7 +621,7 @@ describe('WS-5: End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks Suite',
     }
   });
 
-  it('3. rejects placeholder keys, delivers HTTP 401 onboarding guidance & hot-reloads cross-process from CLI', async () => {
+  it('4. rejects placeholder keys, delivers HTTP 401 onboarding guidance & hot-reloads cross-process from CLI', async () => {
     // Assert placeholder key filter unit coverage
     const samplePlaceholders = [
       'mem_dev_your_key_here',
@@ -597,8 +683,8 @@ describe('WS-5: End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks Suite',
         assert.equal(fs.statSync(cfgPath).mode & 0o777, 0o600);
       }
 
-      // Verify /v1/health was verified by CLI
-      assert.ok(mockState.healthRequests.length >= 1);
+      // Verify POST /v1/mcp was verified by CLI
+      assert.ok(mockState.mcpRequests.length >= 1);
 
       // Immediately call encode_memory on the ALREADY-RUNNING stdio MCP server!
       // (Tests cross-process dynamic hot-reload from disk without restart)
@@ -622,7 +708,9 @@ describe('WS-5: End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks Suite',
       assert.match(err401Text, /Missing Memoreal API key: set MEMOREAL_API_KEY/);
       assert.match(err401Text, /Polite Onboarding Action/);
       assert.match(err401Text, /Step 1/);
+      mockState.return401ForMcp = false;
     } finally {
+      mockState.return401ForMcp = false;
       await stdioClient.close();
       fs.rmSync(tempHome2, { recursive: true, force: true });
     }
@@ -654,7 +742,7 @@ describe('WS-5: End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks Suite',
     }
   });
 
-  it('4. verifies bundled hooks & skills stay silent when unregistered, emit 3-Click Wizard on SessionStart, and omit brain.kolivri.com', async () => {
+  it('5. verifies bundled hooks & skills stay silent when unregistered, emit 3-Click Wizard on SessionStart, and omit brain.kolivri.com', async () => {
     const tempHooksHome = fs.mkdtempSync(path.join(os.tmpdir(), 'memoreal-hooks-e2e-'));
     try {
       // 1. Hooks stay completely silent on Read/Write/Edit when unregistered
@@ -670,6 +758,12 @@ describe('WS-5: End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks Suite',
       assert.match(sessionStartCtx, /Step 1/);
       assert.match(sessionStartCtx, /Step 2/);
       assert.match(sessionStartCtx, /Step 3/);
+      assert.ok(sessionStartCtx.includes('https://memoreal.kolivri.com/connect?tool=opencode'));
+      assert.ok(sessionStartCtx.includes('tool: "opencode"'));
+      assert.ok(sessionStartCtx.includes('client_name: "OpenCode"'));
+      assert.ok(ONBOARDING_WIZARD_PROMPT.includes('https://memoreal.kolivri.com/connect?tool=opencode'));
+      assert.ok(ONBOARDING_WIZARD_PROMPT.includes('tool: "opencode"'));
+      assert.ok(ONBOARDING_WIZARD_PROMPT.includes('client_name: "OpenCode"'));
 
       // 3. hooks/hooks.json exists and contains 3-Click Wizard SessionStart
       const hooksJsonPath = path.join(PKG_ROOT, 'hooks', 'hooks.json');
@@ -678,7 +772,21 @@ describe('WS-5: End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks Suite',
       assert.match(hooksJsonContent, /3-Click Interactive In-Chat Wizard/);
       assert.match(hooksJsonContent, /AskUserQuestion/);
 
-      // 4. skills/memoreal-connect/SKILL.md exists and has 3-Click Wizard documentation
+      function getAllFilesRecursive(dir) {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        const files = [];
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            files.push(...getAllFilesRecursive(fullPath));
+          } else if (entry.isFile()) {
+            files.push(fullPath);
+          }
+        }
+        return files;
+      }
+
+      // 4. skills/memoreal-connect/SKILL.md AND skills/memoria-connect/SKILL.md both exist
       const connectSkillPath = path.join(PKG_ROOT, 'skills', 'memoreal-connect', 'SKILL.md');
       assert.ok(fs.existsSync(connectSkillPath));
       const connectSkillContent = fs.readFileSync(connectSkillPath, 'utf8');
@@ -686,7 +794,26 @@ describe('WS-5: End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks Suite',
       assert.match(connectSkillContent, /connect_account/);
       assert.match(connectSkillContent, /AskUserQuestion/);
 
-      // 5. skills/memoreal-doctor/SKILL.md omits brain.kolivri.com and guides to connect_account / setup
+      const legacyConnectSkillPath = path.join(PKG_ROOT, 'skills', 'memoria-connect', 'SKILL.md');
+      assert.ok(fs.existsSync(legacyConnectSkillPath), 'skills/memoria-connect/SKILL.md must exist');
+      const legacyConnectContent = fs.readFileSync(legacyConnectSkillPath, 'utf8');
+      assert.match(legacyConnectContent, /3-Click Interactive In-Chat Wizard/);
+      assert.match(legacyConnectContent, /connect_account/);
+
+      // 5. Recursively scan EVERY file inside skills/ and assert ZERO files contain brain.kolivri.com
+      const skillsDir = path.join(PKG_ROOT, 'skills');
+      const allSkillFiles = getAllFilesRecursive(skillsDir);
+      assert.ok(allSkillFiles.length >= 2, 'Must scan skills directory');
+      for (const skillFile of allSkillFiles) {
+        const fileContent = fs.readFileSync(skillFile, 'utf8');
+        assert.equal(
+          fileContent.includes('brain.kolivri.com'),
+          false,
+          `Skill file ${path.relative(PKG_ROOT, skillFile)} must NOT contain brain.kolivri.com`
+        );
+      }
+
+      // 6. skills/memoreal-doctor/SKILL.md omits brain.kolivri.com and guides to connect_account / setup
       const doctorSkillPath = path.join(PKG_ROOT, 'skills', 'memoreal-doctor', 'SKILL.md');
       assert.ok(fs.existsSync(doctorSkillPath));
       const doctorSkillContent = fs.readFileSync(doctorSkillPath, 'utf8');
@@ -697,8 +824,113 @@ describe('WS-5: End-to-End Connect Wizard, Hot-Reload, CLI & Quiet-Hooks Suite',
       );
       assert.match(doctorSkillContent, /connect_account/);
       assert.match(doctorSkillContent, /npx -y @kolivri\/memoreal-mcp setup/);
+
+      // 7. Verify in-process MemorealHooksPlugin & setup with PRD_FLASH_LEAF_WORKER cleared and restored
+      const savedLeafWorker = process.env.PRD_FLASH_LEAF_WORKER;
+      delete process.env.PRD_FLASH_LEAF_WORKER;
+      try {
+        const plugin = await MemorealHooksPlugin({ directory: process.cwd() });
+        const pluginOutput = { system: [] };
+        await plugin['experimental.chat.system.transform']({ sessionID: 'test-session-e2e' }, pluginOutput);
+        assert.equal(pluginOutput.system.length, 1);
+        assert.equal(pluginOutput.system[0], ONBOARDING_WIZARD_PROMPT);
+
+        // Turn 2 stays silent
+        const pluginOutput2 = { system: [] };
+        await plugin['experimental.chat.system.transform']({ sessionID: 'test-session-e2e' }, pluginOutput2);
+        assert.equal(pluginOutput2.system.length, 0);
+
+        // V2 setup hook test
+        const contextHandlers = [];
+        const mockCtx = {
+          location: { directory: process.cwd() },
+          session: {
+            hook: async (name, handler) => {
+              if (name === 'context') contextHandlers.push(handler);
+            },
+          },
+          tool: { hook: async () => {} },
+          event: { subscribe: async function* () {} },
+        };
+        const cleanup = await setup(mockCtx);
+        assert.equal(typeof cleanup, 'function');
+        assert.equal(contextHandlers.length, 1);
+        const v2Event = { sessionID: 'test-session-v2-e2e', system: [] };
+        await contextHandlers[0](v2Event);
+        assert.equal(v2Event.system.length, 1);
+        assert.equal(v2Event.system[0].text, ONBOARDING_WIZARD_PROMPT);
+        cleanup();
+      } finally {
+        if (savedLeafWorker !== undefined) {
+          process.env.PRD_FLASH_LEAF_WORKER = savedLeafWorker;
+        } else {
+          delete process.env.PRD_FLASH_LEAF_WORKER;
+        }
+      }
     } finally {
       fs.rmSync(tempHooksHome, { recursive: true, force: true });
+    }
+  });
+
+  it('6. detects 401 on POST /v1/mcp: connect_account({}) with stale key initiates fresh device pairing and CLI setup --key exits non-zero', async () => {
+    // 1. Set mockState.return401ForMcp = true (even while /v1/health returns 200!)
+    mockState.return401ForMcp = true;
+
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'memoreal-e2e-stale-key-'));
+    try {
+      const client = createStdioMcpClient({
+        MEMOREAL_HOME: tempHome,
+        MEMOREAL_API_URL: mockUrl,
+        MEMOREAL_NO_BROWSER: '1',
+        MEMOREAL_API_KEY: 'mem_dev_stale_revoked_key',
+      });
+
+      try {
+        await client.request('initialize', {
+          protocolVersion: '2024-11-05',
+          clientInfo: { name: 'OpenCode', version: '2.0.0' },
+        });
+
+        const mcpCountBefore = mockState.mcpRequests.length;
+        const startCountBefore = mockState.startRequests.length;
+
+        // Calling connect_account({}) (action omitted) with a stale/revoked key
+        const connectRes = await client.request('tools/call', {
+          name: 'connect_account',
+          arguments: {},
+        });
+
+        assert.equal(connectRes.result.isError, false);
+        const connectData = JSON.parse(connectRes.result.content[0].text);
+
+        // Does NOT return already_connected
+        assert.notEqual(connectData.status, 'already_connected');
+        // Instead detects 401 on POST /v1/mcp and initiates a fresh waiting_for_browser device pairing flow
+        assert.equal(connectData.status, 'waiting_for_browser');
+        assert.ok(connectData.user_code);
+        assert.ok(connectData.verification_uri_complete);
+        assert.ok(mockState.mcpRequests.length > mcpCountBefore, 'Must have recorded POST /v1/mcp ping');
+        const lastMcp = mockState.mcpRequests[mockState.mcpRequests.length - 1];
+        assert.equal(lastMcp.headers.authorization, 'Bearer mem_dev_stale_revoked_key');
+        assert.ok(mockState.startRequests.length > startCountBefore, 'Must have initiated device flow via /v1/auth/device/start');
+      } finally {
+        await client.close();
+      }
+
+      // 2. node src/server.mjs setup --key mem_dev_revoked_key exits non-zero when /v1/mcp returns 401
+      const cliRes = await runCliProcess(['setup', '--key', 'mem_dev_revoked_key'], {
+        env: {
+          MEMOREAL_HOME: tempHome,
+          MEMOREAL_API_URL: mockUrl,
+          MEMOREAL_NO_BROWSER: '1',
+        },
+      });
+
+      assert.notEqual(cliRes.code, 0, 'CLI setup --key must exit non-zero when /v1/mcp returns 401');
+      assert.match(cliRes.stderr, /Invalid or revoked Memoreal API key/);
+      assert.match(cliRes.stderr, /401/);
+    } finally {
+      fs.rmSync(tempHome, { recursive: true, force: true });
     }
   });
 });

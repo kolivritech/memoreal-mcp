@@ -94,6 +94,32 @@ describe('config-store', () => {
       assert.equal(sanitizeApiKey("  'mem_dev_valid_123'  "), 'mem_dev_valid_123');
       assert.equal(isPlaceholderApiKey('mem_dev_valid_123'), false);
     });
+
+    it('rejects keys containing whitespace, quotes, newlines, or shell metacharacters', () => {
+      const invalidKeys = [
+        'key with spaces',
+        'key;rm -rf /',
+        'key`id`',
+        'key$(whoami)',
+        'key\nnewline',
+        'key"with"quotes',
+        "key'with'quotes",
+        'key|pipe',
+        'key&bg',
+        'key>file',
+        'key<file',
+        'key$VAR',
+        'key\\backslash',
+      ];
+      for (const k of invalidKeys) {
+        assert.equal(
+          sanitizeApiKey(k),
+          '',
+          `Expected sanitizeApiKey(${JSON.stringify(k)}) to return empty string`
+        );
+      }
+      assert.equal(sanitizeApiKey('mem_dev-valid.KEY_123'), 'mem_dev-valid.KEY_123');
+    });
   });
 
   describe('resolveHomeDir', () => {
@@ -135,6 +161,59 @@ describe('config-store', () => {
       assert.equal(
         normalizeApiUrl('https://api.custom.com'),
         'https://api.custom.com'
+      );
+    });
+
+    it('rejects URLs with whitespace, quotes, newlines, shell metacharacters, or non-HTTPS non-loopback schemes', () => {
+      const invalidUrls = [
+        'http://evil.example.com',
+        'http://insecure.kolivri.com',
+        'javascript:alert(1)',
+        'file:///etc/passwd',
+        'https://example.com/v1/mcp; rm -rf /',
+        'https://example.com`id`',
+        'https://example.com$(whoami)',
+        'https://example.com\n/path',
+        'https://example.com"quotes"',
+        "https://example.com'quotes'",
+        'https://example.com\\backslash',
+        'https://example.com<tag>',
+        'https://example.com>out',
+        'https://example.com with spaces',
+      ];
+      for (const u of invalidUrls) {
+        assert.equal(
+          normalizeApiUrl(u),
+          '',
+          `Expected normalizeApiUrl(${JSON.stringify(u)}) to return empty string`
+        );
+      }
+    });
+
+    it('allows valid https and loopback http URLs', () => {
+      assert.equal(
+        normalizeApiUrl('https://memoria.kolivri.com'),
+        'https://memoria.kolivri.com'
+      );
+      assert.equal(
+        normalizeApiUrl('https://api.my-domain.org:8443/custom/path/v1/mcp/'),
+        'https://api.my-domain.org:8443/custom/path'
+      );
+      assert.equal(
+        normalizeApiUrl('http://localhost:3000/v1/mcp'),
+        'http://localhost:3000'
+      );
+      assert.equal(
+        normalizeApiUrl('http://127.0.0.1:8080/v1/mcp/'),
+        'http://127.0.0.1:8080'
+      );
+      assert.equal(
+        normalizeApiUrl('http://localhost'),
+        'http://localhost'
+      );
+      assert.equal(
+        normalizeApiUrl('http://127.0.0.1'),
+        'http://127.0.0.1'
       );
     });
   });
@@ -337,6 +416,52 @@ describe('config-store', () => {
         () => saveMemorealConfig({ apiKey: '', homeDir: tmpDir }),
         /Cannot save empty or placeholder/
       );
+    });
+
+    it('throws error when saving invalid or insecure Memoreal API URL', () => {
+      assert.throws(
+        () =>
+          saveMemorealConfig({
+            apiKey: 'mem_dev_test_123',
+            apiUrl: 'http://evil.example.com',
+            homeDir: tmpDir,
+          }),
+        /Invalid or insecure Memoreal API URL/
+      );
+      assert.throws(
+        () =>
+          saveMemorealConfig({
+            apiKey: 'mem_dev_test_123',
+            apiUrl: 'https://example.com; rm -rf /',
+            homeDir: tmpDir,
+          }),
+        /Invalid or insecure Memoreal API URL/
+      );
+      assert.throws(
+        () =>
+          saveMemorealConfig({
+            apiKey: 'mem_dev_test_123',
+            apiUrl: 'javascript:alert(1)',
+            homeDir: tmpDir,
+          }),
+        /Invalid or insecure Memoreal API URL/
+      );
+    });
+
+    it('allows saving valid https or loopback http URLs', () => {
+      const resHttps = saveMemorealConfig({
+        apiKey: 'mem_dev_test_123',
+        apiUrl: 'https://api.kolivri.com/v1/mcp',
+        homeDir: tmpDir,
+      });
+      assert.equal(resHttps.apiUrl, 'https://api.kolivri.com');
+
+      const resLoopback = saveMemorealConfig({
+        apiKey: 'mem_dev_test_123',
+        apiUrl: 'http://127.0.0.1:9090',
+        homeDir: tmpDir,
+      });
+      assert.equal(resLoopback.apiUrl, 'http://127.0.0.1:9090');
     });
 
     it('persists 6-key config.env with 0600 mode and creates 0700 directories', () => {

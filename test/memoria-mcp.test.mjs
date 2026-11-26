@@ -172,6 +172,13 @@ describe('@kolivri/memoreal-mcp stdio Cloud Connector suite', () => {
         /Use (when|at|to|after|before)/i.test(connectTool.description),
         'connect_account description matches Glama TDQS disambiguation regex'
       );
+      assert.ok(
+        Array.isArray(connectTool.outputSchema.properties?.workspace?.anyOf),
+        'connect_account outputSchema.properties.workspace defines anyOf'
+      );
+      const workspaceTypes = connectTool.outputSchema.properties.workspace.anyOf.map((s) => s.type);
+      assert.ok(workspaceTypes.includes('string'), 'workspace schema supports string');
+      assert.ok(workspaceTypes.includes('object'), 'workspace schema supports object');
 
       const initBadProto = await client.request('initialize', {
         protocolVersion: { malformed: true },
