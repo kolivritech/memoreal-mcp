@@ -142,6 +142,11 @@ describe('Apify Actor Specification and Runner Suite', () => {
     assert.equal(custom.salience, 1.0, 'clamped to 1.0');
     assert.equal(custom.tokenBudget, 1024);
     assert.equal(custom.type, 'episodic', 'fallback to episodic on invalid type');
+
+    assert.equal(normalizeInput({ apiKey: 'mem_dev_your_key_here' }).apiKey, '');
+    assert.equal(normalizeInput({ apiKey: 'mem_dev_...' }).apiKey, '');
+    assert.equal(normalizeInput({ apiKey: 'YOUR_API_KEY' }).apiKey, '');
+    assert.equal(normalizeInput({ apiKey: '<MEMOREAL_API_KEY>' }).apiKey, '');
   });
 
   it('resolves input from explicit object, env JSON, and fallback files', async () => {
@@ -163,7 +168,7 @@ describe('Apify Actor Specification and Runner Suite', () => {
     }
   });
 
-  it('throws descriptive error when API key is missing for tool actions', async () => {
+  it('throws descriptive error when API key is missing for tool actions or using placeholders without leaking ambient config.env', async () => {
     const origMemoreal = process.env.MEMOREAL_API_KEY;
     const origMemoria = process.env.MEMORIA_API_KEY;
     delete process.env.MEMOREAL_API_KEY;
@@ -176,7 +181,7 @@ describe('Apify Actor Specification and Runner Suite', () => {
             apiKey: '',
             apiUrl: mockServerUrl,
           }),
-        /Missing Memoreal API key/
+        /Missing Memoreal API key: set MEMOREAL_API_KEY.*Polite Onboarding Action/s
       );
 
       await assert.rejects(
@@ -186,7 +191,37 @@ describe('Apify Actor Specification and Runner Suite', () => {
             apiKey: '',
             apiUrl: mockServerUrl,
           }),
-        /Missing Memoreal API key/
+        /Missing Memoreal API key: set MEMOREAL_API_KEY.*Polite Onboarding Action/s
+      );
+
+      await assert.rejects(
+        () =>
+          executeMemorealActorAction({
+            action: 'context',
+            apiKey: 'mem_dev_your_key_here',
+            apiUrl: mockServerUrl,
+          }),
+        /Missing Memoreal API key: set MEMOREAL_API_KEY.*Polite Onboarding Action/s
+      );
+
+      await assert.rejects(
+        () =>
+          executeMemorealActorAction({
+            action: 'health',
+            apiKey: 'YOUR_API_KEY',
+            apiUrl: mockServerUrl,
+          }),
+        /Missing Memoreal API key: set MEMOREAL_API_KEY.*Polite Onboarding Action/s
+      );
+
+      await assert.rejects(
+        () =>
+          executeMemorealActorAction({
+            action: 'context',
+            apiKey: '<MEMOREAL_API_KEY>',
+            apiUrl: mockServerUrl,
+          }),
+        /Missing Memoreal API key: set MEMOREAL_API_KEY.*Polite Onboarding Action/s
       );
     } finally {
       if (origMemoreal !== undefined) {

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createMemorealMcpService, startMcpStdioServer } from './server.mjs';
 import { MEMORY_TYPES } from './schemas.mjs';
+import { sanitizeApiKey } from './config-store.mjs';
 
 export const VALID_ACTIONS = Object.freeze([
   'recall',
@@ -16,7 +17,11 @@ export const VALID_ACTIONS = Object.freeze([
 
 export function normalizeInput(rawInput = {}) {
   const input = rawInput && typeof rawInput === 'object' ? rawInput : {};
-  const apiKey = (input.apiKey || process.env.MEMOREAL_API_KEY || process.env.MEMORIA_API_KEY || '').trim();
+  const apiKey =
+    sanitizeApiKey(input.apiKey) ||
+    sanitizeApiKey(process.env.MEMOREAL_API_KEY) ||
+    sanitizeApiKey(process.env.MEMORIA_API_KEY) ||
+    '';
   const apiUrl = (input.apiUrl || process.env.MEMOREAL_API_URL || process.env.MEMORIA_API_URL || 'https://memoria.kolivri.com').trim();
   const namespace = (input.namespace || process.env.MEMOREAL_NAMESPACE || process.env.MEMORIA_NAMESPACE || 'default').trim() || 'default';
   const action = (input.action ?? 'context').trim();
@@ -157,6 +162,12 @@ export async function readApifyInput(explicitInput = null) {
 export async function executeMemorealActorAction(rawInput = {}, options = {}) {
   const normalized = normalizeInput(rawInput);
   const { action, apiKey, apiUrl, namespace, query, content, type, salience, tokenBudget } = normalized;
+  const disableConfigFileFallback = Boolean(
+    rawInput &&
+    typeof rawInput === 'object' &&
+    'apiKey' in rawInput &&
+    !sanitizeApiKey(rawInput.apiKey)
+  );
 
   if (!VALID_ACTIONS.includes(action)) {
     throw new Error(
@@ -170,6 +181,7 @@ export async function executeMemorealActorAction(rawInput = {}, options = {}) {
         apiKey,
         apiUrl,
         namespace,
+        disableConfigFileFallback,
         fetchImpl: options.fetchImpl,
       },
       input: options.stdioInput || process.stdin,
@@ -188,6 +200,7 @@ export async function executeMemorealActorAction(rawInput = {}, options = {}) {
     apiKey,
     apiUrl,
     namespace,
+    disableConfigFileFallback,
     fetchImpl: options.fetchImpl,
     requestTimeoutMs: options.requestTimeoutMs,
   });

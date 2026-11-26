@@ -36,7 +36,7 @@ export const AGENT_WINGS = Object.freeze([
 ]);
 
 export const MCP_SERVER_INSTRUCTIONS =
-  'Memoreal Cloud provides deterministic long-term memory and code intelligence across sessions. Set MEMOREAL_API_KEY from https://memoreal.kolivri.com/register. At session start, call build_context with the workspace namespace and a task query (plus health in parallel). Before re-reading files or assuming missing context, call recall_memories, search_code, or explain_code. Persist durable architectural decisions, root causes, and user rules via encode_memory or batch_encode, rate recalled items with feedback, and run consolidate periodically to merge duplicates.';
+  'Memoreal Cloud provides deterministic long-term memory and code intelligence across sessions. If unauthenticated or MEMOREAL_API_KEY is missing, run the 3-Click Interactive In-Chat Wizard via AskUserQuestion (in Claude Code) or question (in OpenCode & Cursor) and never ask users to paste raw API keys into chat: Step 1 ("Connect in 1 Click via Google / Browser (Recommended)" vs "Skip for this session"), Step 2 (call connect_account with action: "start", present the verification link /connect?code=XXXX-YYYY, and offer the "I clicked Authorize — Verify" card calling connect_account with action: "status"), and Step 3 ("Yes — Index repo now (Recommended)" vs "Later"). At session start, call build_context with the workspace namespace and a task query (plus health in parallel). Before re-reading files or assuming missing context, call recall_memories, search_code, or explain_code. Persist durable architectural decisions, root causes, and user rules via encode_memory or batch_encode, rate recalled items with feedback, and run consolidate periodically to merge duplicates.';
 
 export const MCP_TOOLS = Object.freeze([
   {
@@ -451,6 +451,78 @@ export const MCP_TOOLS = Object.freeze([
         namespace: { type: 'string', description: 'Target wing namespace (for example "wing:qa").' },
       },
       required: ['id', 'wing', 'namespace'],
+    },
+  },
+  {
+    name: 'connect_account',
+    title: 'Connect Memoreal Account',
+    description:
+      'Connect or pair this workspace with Memoreal Cloud via the 3-Click browser OAuth device pairing wizard (does not require an existing API key; safe and non-destructive; persists 0600 config.env upon authorization). Action "start" generates a user code, launches the browser authorization URL, and starts background polling. Action "status" checks device authorization progress. Use when onboarding an unauthenticated user or reconnecting expired credentials without asking the user to copy-paste raw API keys into chat; use health instead when already authenticated to check connection status and API quota.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['start', 'status'],
+          default: 'start',
+          description: 'Pairing action to perform: "start" to request a device code and open browser, or "status" to verify pairing progress.',
+        },
+        open_browser: {
+          type: 'boolean',
+          default: true,
+          description: 'Whether to automatically launch the default system browser for authorization (defaults to true).',
+        },
+        client_name: {
+          type: 'string',
+          description: 'Optional host IDE or client name (for example "Claude Code", "OpenCode", or "Cursor").',
+        },
+      },
+      required: [],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['already_connected', 'waiting_for_browser', 'connected', 'not_started', 'denied', 'expired'],
+          description: 'Current device authorization state.',
+        },
+        message: {
+          type: 'string',
+          description: 'Human-readable status summary or next-step guidance.',
+        },
+        api_url: {
+          type: 'string',
+          description: 'Resolved Memoreal Cloud API URL.',
+        },
+        user_code: {
+          type: 'string',
+          description: 'Short 8-character user code shown to the user on the device authorization screen.',
+        },
+        verification_uri: {
+          type: 'string',
+          description: 'Base browser URL where the user enters the code.',
+        },
+        verification_uri_complete: {
+          type: 'string',
+          description: 'Full browser URL pre-filled with the device code for 1-click authorization.',
+        },
+        expires_in: {
+          type: 'integer',
+          description: 'Device code lifetime in seconds remaining.',
+        },
+        browser_opened: {
+          type: 'boolean',
+          description: 'Whether the operating system browser was successfully launched.',
+        },
+        workspace: {
+          anyOf: [{ type: 'string' }, { type: 'object' }],
+          description:
+            'Connected organization/workspace slug string (for example "acme") or sanitized metadata object (secret keys are stripped).',
+        },
+      },
+      required: ['status', 'message'],
     },
   },
 ]);
